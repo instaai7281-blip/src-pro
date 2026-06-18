@@ -103,4 +103,21 @@ async def update_data(user_id, update_dict):
     else:
         update_dict["_id"] = user_id
         await db.insert_one(update_dict)
+
+async def load_all_thumbnails(thumbnail_dir):
+    try:
+        import os
+        cursor = db.find({"thumb": {"$ne": None}})
+        count = 0
+        async for user_data in cursor:
+            user_id = user_data.get("_id")
+            thumb_data = user_data.get("thumb")
+            if user_id and isinstance(thumb_data, (bytes, bytearray)):
+                path = os.path.join(thumbnail_dir, f"{user_id}.jpg")
+                with open(path, "wb") as f:
+                    f.write(thumb_data)
+                count += 1
+        print(f"[INFO] Restored {count} custom thumbnails from MongoDB.")
+    except Exception as e:
+        print(f"[ERROR] Failed to restore custom thumbnails: {e}")
  

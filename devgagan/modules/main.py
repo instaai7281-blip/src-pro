@@ -103,29 +103,28 @@ async def single_link(_, message):
 
     link = message.text if "tg://openmessage" in message.text else get_link(message.text)
     msg = await message.reply("Processing...")
-    userbot = await initialize_userbot(user_id)
 
-    async with task_semaphore:
+    userbot = await initialize_userbot(user_id)
+    try:
+        if await is_normal_tg_link(link):
+            # Pass userbot if available; handle normal Telegram links
+            await process_and_upload_link(userbot, user_id, msg.id, link, 0, message)
+            await set_interval(user_id, interval_minutes=45)
+        else:
+            # Handle special Telegram links
+            await process_special_links(userbot, user_id, msg, link)
+    except FloodWait as fw:
+        await msg.edit_text(f'Try again after {fw.x} seconds due to floodwait from Telegram.')
+    except Exception as e:
+        await msg.edit_text(f"Link: `{link}`\n\n**Error:** {str(e)}")
+    finally:
+        users_loop[user_id] = False
+        if userbot:
+            await userbot.stop()
         try:
-            if await is_normal_tg_link(link):
-                # Pass userbot if available; handle normal Telegram links
-                await process_and_upload_link(userbot, user_id, msg.id, link, 0, message)
-                await set_interval(user_id, interval_minutes=45)
-            else:
-                # Handle special Telegram links
-                await process_special_links(userbot, user_id, msg, link)
-        except FloodWait as fw:
-            await msg.edit_text(f'Try again after {fw.x} seconds due to floodwait from Telegram.')
-        except Exception as e:
-            await msg.edit_text(f"Link: `{link}`\n\n**Error:** {str(e)}")
-        finally:
-            users_loop[user_id] = False
-            if userbot:
-                await userbot.stop()
-            try:
-                await msg.delete()
-            except Exception:
-                pass
+            await msg.delete()
+        except Exception:
+            pass
 
 
 async def initialize_userbot(user_id): # this ensure the single startup .. even if logged in or not
@@ -135,11 +134,14 @@ async def initialize_userbot(user_id): # this ensure the single startup .. even 
         try:
             device = 'iPhone 16 Pro' # added gareebi text
             userbot = Client(
-                "userbot",
+                f"userbot_{user_id}",
                 api_id=API_ID,
                 api_hash=API_HASH,
                 device_model=device,
-                session_string=data.get("session")
+                session_string=data.get("session"),
+                in_memory=True,
+                no_updates=True,
+                max_concurrent_transmissions=16
             )
             await userbot.start()
             return userbot

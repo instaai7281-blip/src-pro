@@ -290,86 +290,194 @@ async def screenshot(video, duration, sender):
         if duration <= 0:
             duration = 10  # Fallback duration to allow seek
             
-        # To avoid black frames at start/end:
-        # If duration > 10, seek to 5 seconds. Otherwise seek to half or 1 second.
-        seek_time = 5 if duration > 10 else max(int(duration) // 2, 1)
-        time_stamp = hhmmss(seek_time)
         out = f"thumb_{sender}_{int(time.time())}.jpg"
+        success = False
         
-        print(f"[DEBUG] Creating thumbnail: seek_time={seek_time}, output={out}")
-        
-        # Try with fast seek first (ss before -i)
-        cmd = ["ffmpeg",
-               "-ss", f"{time_stamp}", 
-               "-i", f"{video}",
-               "-frames:v", "1",
-               "-q:v", "2",
-               "-an",
-               "-threads", "1",
-               f"{out}",
-               "-y"
-              ]
-        
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        await process.communicate()
-        
-        # If fast seek failed or produced empty file, try slow seek (ss after -i)
-        if not os.path.isfile(out) or os.path.getsize(out) == 0:
-            print("[DEBUG] Fast seek failed, trying slow seek...")
-            cmd = ["ffmpeg",
-                   "-i", f"{video}",
-                   "-ss", f"{time_stamp}", 
-                   "-frames:v", "1",
-                   "-q:v", "2",
-                   "-an",
-                   "-threads", "1",
-                   f"{out}",
-                   "-y"
-                  ]
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            await process.communicate()
+        # 1. Try OpenCV first (super fast and handles non-black detection efficiently)
+        try:
+            print(f"[DEBUG] Trying OpenCV screenshot for: {video}")
+            vcap = cv2.VideoCapture(video)
+            if vcap.isOpened():
+                frame_count = vcap.get(cv2.CAP_PROP_FRAME_COUNT)
+                if frame_count > 0:
+                    # Try 20 seek points from 5% to 100% of the video
+                    attempts = 20
+                    seek_pcts = [i * 0.05 for i in range(1, attempts + 1)]
+                    fallback_frame = None
+                    
+                    for pct in seek_pcts:
+                        frame_no = int(frame_count * pct)
+                        vcap.set(cv2.CAP_PROP_POS_FRAMES, frame_no)
+                        ret, frame = vcap.read()
+                        if ret and frame is not None:
+                            if fallback_frame is None:
+                                fallback_frame = frame.copy()
+                            
+                            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                            mean_val = gray.mean()
+                            print(f"[DEBUG] OpenCV seek {pct*100:.1f}%: mean brightness = {mean_val:.2f}")
+                            if mean_val >= 10.0:
+                                cv2.imwrite(out, frame)
+                                success = True
+                                break
+                    
+                    if not success and fallback_frame is not None:
+                        print("[DEBUG] OpenCV all seek attempts below brightness threshold. Using fallback frame.")
+                        cv2.imwrite(out, fallback_frame)
+                        success = True
+                        
+                vcap.release()
+        except Exception as e:
+            print(f"[ERROR] OpenCV screenshot failed: {e}")
+            success = False
             
-        # If both failed, try seeking to 2 seconds
-        if not os.path.isfile(out) or os.path.getsize(out) == 0:
-            print("[DEBUG] Seek to mid/5s failed, trying seek to 2 seconds...")
-            cmd = ["ffmpeg",
-                   "-i", f"{video}",
-                   "-ss", "00:00:02", 
-                   "-frames:v", "1",
-                   "-q:v", "2",
-                   "-an",
-                   "-threads", "1",
-                   f"{out}",
-                   "-y"
-                  ]
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            await process.communicate()
-
-        if os.path.isfile(out) and os.path.getsize(out) > 0:
-            optimized_out = optimize_thumbnail(out)
-            print(f"[SUCCESS] Thumbnail created and optimized: {optimized_out}")
-            return optimized_out
-        else:
-            print(f"[ERROR] Thumbnail file not created or empty: {out}")
-            if os.path.isfile(out):
+        # 2. Fallback to FFmpeg if OpenCV failed or didn't generate a thumbnail
+        if not success or not os.path.isfile(out) or os.path.getsize(out) == 0:
+            print(f"[DEBUG] OpenCV screenshot failed or produced empty file. Falling back to FFmpeg for: {video}")
+            
+            # Try multiple seek times to avoid black frames: 
+            # 10%, 25%, 50%, 5s, 15s, 2s
+            seek_times = []
+            if duration > 20:
+                seek_times = [
+                    int(duration * 0.1),
+                    int(duration * 0.25),
+                    int(duration * 0.5),
+                    5,
+                    15,
+                    2
+                ]
+            else:
+                seek_times = [
+                    max(int(duration) // 2, 1),
+                    2,
+                    1
+                ]
+                
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_seek_times = []
+            for t in seek_times:
+                t = max(1, min(t, int(duration) - 1))
+                if t not in seen:
+                    seen.add(t)
+                    unique_seek_times.append(t)
+                    
+            fallback_thumb = f"fallback_{out}"
+            fallback_created = False
+            
+            for seek_time in unique_seek_times:
+                time_stamp = hhmmss(seek_time)
+                print(f"[DEBUG] FFmpeg trying screenshot at seek_time={seek_time} ({time_stamp})")
+                
+                # Fast seek
+                cmd = ["ffmpeg",
+                       "-ss", f"{time_stamp}", 
+                       "-i", f"{video}",
+                       "-frames:v", "1",
+                       "-q:v", "2",
+                       "-an",
+                       "-threads", "1",
+                       f"{out}",
+                       "-y"
+                      ]
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await process.communicate()
+                
+                # Slow seek fallback
+                if not os.path.isfile(out) or os.path.getsize(out) == 0:
+                    print(f"[DEBUG] Fast seek failed, trying slow seek at {time_stamp}...")
+                    cmd = ["ffmpeg",
+                           "-i", f"{video}",
+                           "-ss", f"{time_stamp}", 
+                           "-frames:v", "1",
+                           "-q:v", "2",
+                           "-an",
+                           "-threads", "1",
+                           f"{out}",
+                           "-y"
+                          ]
+                    process = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await process.communicate()
+                    
+                # Check if created and not black
+                if os.path.isfile(out) and os.path.getsize(out) > 0:
+                    # Read image in grayscale using cv2
+                    img = cv2.imread(out, cv2.IMREAD_GRAYSCALE)
+                    if img is not None:
+                        mean_val = img.mean()
+                        print(f"[DEBUG] FFmpeg generated mean brightness: {mean_val:.2f}")
+                        
+                        # Store the first successfully read image as fallback
+                        if not fallback_created:
+                            import shutil
+                            try:
+                                shutil.copy2(out, fallback_thumb)
+                                fallback_created = True
+                            except Exception as e:
+                                print(f"[DEBUG] Failed to copy fallback thumb: {e}")
+                                
+                        if mean_val >= 10.0:  # Not black!
+                            success = True
+                            break
+                        else:
+                            print(f"[DEBUG] Thumbnail at seek_time={seek_time} is black. Trying next...")
+                            try:
+                                os.remove(out)
+                            except Exception:
+                                pass
+                    else:
+                        print(f"[DEBUG] cv2 failed to read {out}")
+                        try:
+                            os.remove(out)
+                        except Exception:
+                            pass
+                            
+            if success and os.path.isfile(out) and os.path.getsize(out) > 0:
+                if os.path.isfile(fallback_thumb):
+                    try:
+                        os.remove(fallback_thumb)
+                    except Exception:
+                        pass
+            elif fallback_created and os.path.isfile(fallback_thumb) and os.path.getsize(fallback_thumb) > 0:
+                print(f"[WARNING] FFmpeg all seeks below threshold. Using fallback: {fallback_thumb}")
+                import shutil
                 try:
-                    os.remove(out)
+                    if os.path.isfile(out):
+                        os.remove(out)
                 except Exception:
                     pass
-            return None
+                try:
+                    shutil.move(fallback_thumb, out)
+                    success = True
+                except Exception as e:
+                    print(f"[ERROR] Failed to move fallback to out: {e}")
+            else:
+                if os.path.isfile(out):
+                    try:
+                        os.remove(out)
+                    except Exception:
+                        pass
+                if os.path.isfile(fallback_thumb):
+                    try:
+                        os.remove(fallback_thumb)
+                    except Exception:
+                        pass
+                        
+        if success and os.path.isfile(out) and os.path.getsize(out) > 0:
+            optimized_out = optimize_thumbnail(out)
+            print(f"[SUCCESS] Final thumbnail created and optimized: {optimized_out}")
+            return optimized_out
             
+        return None
     except Exception as e:
         print(f"[CRITICAL] Screenshot exception: {str(e)}")
         return None

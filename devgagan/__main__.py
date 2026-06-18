@@ -33,6 +33,14 @@ async def schedule_expiry_check():
         gc.collect()
 
 async def devggn_boot():
+    # Restore custom thumbnails from DB on startup
+    from devgagan.core.mongo.db import load_all_thumbnails
+    from config import THUMBNAIL_DIR
+    try:
+        await load_all_thumbnails(THUMBNAIL_DIR)
+    except Exception as e:
+        print(f"Failed to load thumbnails: {e}")
+
     for all_module in ALL_MODULES:
         importlib.import_module("devgagan.modules." + all_module)
     print("""

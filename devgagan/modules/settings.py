@@ -189,14 +189,32 @@ async def thumb_actions_callback(client, callback_query: CallbackQuery):
 
     if data == "delete_thumb":
         await db.remove_thumbnail(user_id)
+        from config import THUMBNAIL_DIR
+        import os
+        thumbnail_path = os.path.join(THUMBNAIL_DIR, f"{user_id}.jpg")
+        if os.path.exists(thumbnail_path):
+            try:
+                os.remove(thumbnail_path)
+            except Exception:
+                pass
         await callback_query.answer("Thumbnail deleted", show_alert=True)
     elif data == "set_new_thumb":
         await callback_query.message.delete()
         ask = await client.ask(user_id, "🖼️ **Send the photo you want to set as thumbnail.**\n\n> Send /cancel to abort.")
         
         if ask.photo:
-            thumb_path = await ask.download()
-            await db.set_thumbnail(user_id, thumb_path)
+            import os
+            from config import THUMBNAIL_DIR
+            from devgagan.core.func import optimize_thumbnail
+            thumbnail_path = os.path.join(THUMBNAIL_DIR, f"{user_id}.jpg")
+            await ask.download(file_name=thumbnail_path)
+            optimize_thumbnail(thumbnail_path)
+            try:
+                with open(thumbnail_path, "rb") as f:
+                    binary_data = f.read()
+                await db.set_thumbnail(user_id, binary_data)
+            except Exception as e:
+                print(f"[ERROR] Failed to save thumbnail to DB: {e}")
             await ask.reply("✅ **Thumbnail updated successfully!**")
         elif ask.text == "/cancel":
             await ask.reply("Action cancelled.")
@@ -308,6 +326,14 @@ async def reset_actions_callback(client, callback_query: CallbackQuery):
     elif data == "reset_all_settings":
         # Full wipe (except session/premium status if they exist elsewhere)
         await db.remove_thumbnail(user_id)
+        from config import THUMBNAIL_DIR
+        import os
+        thumbnail_path = os.path.join(THUMBNAIL_DIR, f"{user_id}.jpg")
+        if os.path.exists(thumbnail_path):
+            try:
+                os.remove(thumbnail_path)
+            except Exception:
+                pass
         await db.remove_caption(user_id)
         await db.remove_replace(user_id)
         await db.all_words_remove(user_id)

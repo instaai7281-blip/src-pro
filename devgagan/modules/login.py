@@ -85,7 +85,7 @@ async def generate_session(_, message):
     phone_number = number.text
     try:
         await message.reply("📲 Sending OTP...")
-        client = Client(f"session_{user_id}", api_id, api_hash)
+        client = Client(f"session_{user_id}", api_id, api_hash, max_concurrent_transmissions=16)
         
         await client.connect()
     except Exception as e:
