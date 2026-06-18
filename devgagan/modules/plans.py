@@ -42,9 +42,26 @@ async def remove_premium(client, message):
         except Exception:
             pass
 
+        # Check premium database
         data = await plans_db.check_premium(user_id)
-        if data and data.get("_id"):
-            await plans_db.remove_premium(user_id)
+        
+        # Check active tokens database
+        from motor.motor_asyncio import AsyncIOMotorClient
+        from config import MONGO_DB
+        tclient = AsyncIOMotorClient(MONGO_DB)
+        tdb = tclient["telegram_bot"]
+        tokens_col = tdb["tokens"]
+        token_data = await tokens_col.find_one({"user_id": user_id})
+
+        is_premium = data and data.get("_id")
+        is_token_verified = token_data is not None
+
+        if is_premium or is_token_verified:
+            if is_premium:
+                await plans_db.remove_premium(user_id)
+            if is_token_verified:
+                await tokens_col.delete_one({"user_id": user_id})
+
             await message.reply_text(
                 f"⚙️ 🖤 **𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘** 🖤 ⚙️\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -52,7 +69,7 @@ async def remove_premium(client, message):
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"👤 **User:** {user_mention}\n"
                 f"🆔 **ID:** `{user_id}`\n"
-                f"❌ **Status:** Premium access terminated.\n"
+                f"❌ **Status:** Premium access & active token sessions terminated.\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             )
             try:
@@ -61,7 +78,7 @@ async def remove_premium(client, message):
                     text=(
                         f"⚠️ **NOTICE: PREMIUM EXPIRED/TERMINATED** ⚠️\n"
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"Hello, your premium subscription for \n"
+                        f"Hello, your premium subscription or token session for \n"
                         f"🖤 **CHOSEN ONE ⚝** has been terminated or expired.\n\n"
                         f"💬 If you think this is a mistake or wish to renew, please contact the owner.\n"
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -70,9 +87,18 @@ async def remove_premium(client, message):
             except Exception:
                 pass
         else:
+            # Force cleanup of any records in both databases just in case
+            await plans_db.remove_premium(user_id)
+            await tokens_col.delete_one({"user_id": user_id})
             await message.reply_text(
-                f"🤷 **Pointless!**\n\n"
-                f"This user is not a premium member. No action taken."
+                f"⚙️ 🖤 **𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘** 🖤 ⚙️\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🧹 **FORCE CLEANED**\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 **User:** {user_mention}\n"
+                f"🆔 **ID:** `{user_id}`\n"
+                f"🧹 **Action:** Force-removed from premium and token databases.\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             )
     else:
         await message.reply_text(
