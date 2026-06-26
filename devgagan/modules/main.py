@@ -389,7 +389,7 @@ async def execute_batch(user_id, base_url, cs, cl, is_tg_openmessage, freecheck)
                 await get_msg(userbot, user_id, None, link, 0, pin_msg)
                 success_count += 1
                 # Adaptive delay to avoid flood waits
-                await asyncio.sleep(1.5) 
+                await asyncio.sleep(0.5) 
             except FloodWait as e:
                 await asyncio.sleep(e.value + 2)
                 # Retry once after flood wait

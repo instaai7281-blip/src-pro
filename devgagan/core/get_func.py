@@ -117,7 +117,7 @@ def clean_text_advanced(text, user_tag, delete_words=None, replacements=None):
     text = re.sub(r'[)}\]]', '〙', text)
     
     # Rebrand extraction markers
-    text = re.sub(r'(?i)(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*', r'<b>⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗</b>', text)
+    text = re.sub(r'(?i)(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*', '', text)
     
     if delete_words:
         for word in delete_words:
@@ -165,6 +165,60 @@ def clean_filename(text, user_tag=""):
     
     return text.strip()
 
+
+def clean_text_message(text, sender=None):
+    """Clean text messages - remove links, mentions, hashtags, unwanted branding."""
+    if not text:
+        return text
+    
+    # Remove zero-width characters
+    text = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', text)
+    
+    # Remove HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Remove ALL URLs
+    text = re.sub(r'https?://\S+|www\.\S+|t\.me/\S+|telegram\.me/\S+', '', text)
+    
+    # Remove @mentions
+    text = re.sub(r'@\w+', '', text)
+    
+    # Remove hashtags
+    text = re.sub(r'#\S+', '', text)
+    
+    # Remove unwanted branding patterns
+    branding_patterns = [
+        r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*',
+        r'(?i)[*_]*team[\s_\-\.]*sp[ay]+[*_]*',
+        r'(?i)[*_]*team[\s_\-\.]*spy[\s_\-\.]*pro[*_]*',
+        r"(?i)[*_]*let'?s\s*help[*_]*",
+        r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
+        r'(?i)devgagan',
+        r'(?i)(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*',
+        r'(?i)powered\s*by[^\n]*',
+        r'(?i)via\s*@\w+',
+        r'(?i)bot:\s*@\w+',
+    ]
+    for pattern in branding_patterns:
+        text = re.sub(pattern, '', text)
+    
+    # Clean Chaudhary fancy text
+    text = remove_chaudhary_fancy(text)
+    
+    # Apply user-specific cleaning if sender available
+    if sender:
+        delete_words = load_delete_words(sender)
+        replacements = load_replacement_words(sender)
+        for word in delete_words:
+            text = text.replace(word, '')
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+    
+    # Collapse whitespace but keep newlines
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    return text.strip()
 
 
 # MongoDB database name and collection name
@@ -289,7 +343,8 @@ async def upload_media(sender, target_chat_id, file, caption, edit, topic_id, th
         # ✅ Generate cleaned caption for user post
         if file.lower().endswith('.pdf') and not caption:
             filename = os.path.basename(file)
-            caption = f"> **{filename}**\n\n> **⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**"
+            tag = get_user_branding_tag(sender)
+            caption = f"> **{filename}**\n\n> **{tag}**"
 
         # ✅ Generate log caption separately
         user = await app.get_users(sender)
@@ -603,13 +658,13 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
         if msg.media == MessageMediaType.WEB_PAGE_PREVIEW:
             if not await is_enabled(sender, "text"):
                 return
-            await clone_message(app, msg, target_chat_id, topic_id, edit_id, LOG_GROUP)
+            await clone_message(app, msg, target_chat_id, topic_id, edit_id, LOG_GROUP, sender=sender)
             return
 
         if msg.text:
             if not await is_enabled(sender, "text"):
                 return
-            await clone_text_message(app, msg, target_chat_id, topic_id, edit_id, LOG_GROUP)
+            await clone_text_message(app, msg, target_chat_id, topic_id, edit_id, LOG_GROUP, sender=sender)
             return
 
         if msg.sticker:
@@ -655,7 +710,8 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
 
         if file and str(file).lower().endswith('.pdf') and not caption:
             filename = os.path.basename(file)
-            caption = f"> **{filename}**\n\n> **⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**"
+            tag = get_user_branding_tag(sender)
+            caption = f"> **{filename}**\n\n> **{tag}**"
 
         # Apply PDF Watermark if applicable
         if file and str(file).lower().endswith('.pdf'):
@@ -737,7 +793,7 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
                 pass
         task_semaphore.release()
         
-async def clone_message(app, msg, target_chat_id, topic_id, edit_id, log_group):
+async def clone_message(app, msg, target_chat_id, topic_id, edit_id, log_group, sender=None):
     edit = None
     try:
         edit = await app.edit_message_text(target_chat_id, edit_id, "Cloning...")
@@ -746,7 +802,11 @@ async def clone_message(app, msg, target_chat_id, topic_id, edit_id, log_group):
             edit = await app.edit_message_text(msg.chat.id, edit_id, "Cloning...")
         except Exception:
             pass
-    devgaganin = await app.send_message(target_chat_id, msg.text.markdown, reply_to_message_id=topic_id)
+    cleaned_text = clean_text_message(msg.text.markdown, sender)
+    if not cleaned_text.strip():
+        branding_tag = get_user_branding_tag(sender)
+        cleaned_text = f"> **{branding_tag}**"
+    devgaganin = await app.send_message(target_chat_id, cleaned_text, reply_to_message_id=topic_id)
     await devgaganin.copy(log_group)
     if edit:
         try:
@@ -754,7 +814,7 @@ async def clone_message(app, msg, target_chat_id, topic_id, edit_id, log_group):
         except Exception:
             pass
 
-async def clone_text_message(app, msg, target_chat_id, topic_id, edit_id, log_group):
+async def clone_text_message(app, msg, target_chat_id, topic_id, edit_id, log_group, sender=None):
     edit = None
     try:
         edit = await app.edit_message_text(target_chat_id, edit_id, "Cloning text message...")
@@ -763,7 +823,11 @@ async def clone_text_message(app, msg, target_chat_id, topic_id, edit_id, log_gr
             edit = await app.edit_message_text(msg.chat.id, edit_id, "Cloning text message...")
         except Exception:
             pass
-    devgaganin = await app.send_message(target_chat_id, msg.text.markdown, reply_to_message_id=topic_id)
+    cleaned_text = clean_text_message(msg.text.markdown, sender)
+    if not cleaned_text.strip():
+        branding_tag = get_user_branding_tag(sender)
+        cleaned_text = f"> **{branding_tag}**"
+    devgaganin = await app.send_message(target_chat_id, cleaned_text, reply_to_message_id=topic_id)
     await devgaganin.copy(log_group)
     if edit:
         try:
@@ -794,14 +858,14 @@ async def handle_sticker(app, msg, target_chat_id, topic_id, edit_id, log_group)
 
 async def get_media_filename(msg):
     if msg.document:
-        return msg.document.file_name or "Document_By_@Src_pro_bot.txt"
+        return msg.document.file_name or "document.txt"
     if msg.video:
-        return msg.video.file_name or "Video_By_@Src_pro_bot.mp4"
+        return msg.video.file_name or "video.mp4"
     if msg.audio:
-        return msg.audio.file_name or "Audio_By_@Src_pro_bot.mp3"
+        return msg.audio.file_name or "audio.mp3"
     if msg.photo:
-        return "Image_By_@Src_pro_bot.jpg"
-    return "File_By_@Src_pro_bot.dat"
+        return "image.jpg"
+    return "file.dat"
 
 
 
@@ -930,8 +994,9 @@ async def copy_message_with_chat_id(app, userbot, sender, chat_id, message_id, e
             base_name, ext = os.path.splitext(clean_filename_base)
             if ext.lower() != '.pdf':
                 ext = '.pdf'
+            tag = get_user_branding_tag(sender)
             formatted_filename = f"{base_name.strip()} ⚝{ext}".strip()
-            final_caption = f"> **{formatted_filename}**\n\n> **⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**"
+            final_caption = f"> **{formatted_filename}**\n\n> **{tag}**"
 
         topic_id = None
         if '/' in str(target_chat_id):
@@ -940,7 +1005,11 @@ async def copy_message_with_chat_id(app, userbot, sender, chat_id, message_id, e
         if msg.media:
             result = await send_media_message(app, target_chat_id, msg, final_caption, topic_id)
         elif msg.text:
-            result = await app.copy_message(target_chat_id, chat_id, message_id, reply_to_message_id=topic_id)
+            cleaned_text = clean_text_message(msg.text.markdown if hasattr(msg.text, 'markdown') else str(msg.text), sender)
+            if not cleaned_text.strip():
+                branding_tag = get_user_branding_tag(sender)
+                cleaned_text = f"> **{branding_tag}**"
+            result = await app.send_message(target_chat_id, cleaned_text, reply_to_message_id=topic_id)
         
         if result:
             return True
@@ -968,7 +1037,11 @@ async def copy_message_with_chat_id(app, userbot, sender, chat_id, message_id, e
                 return False
 
             if msg.text:
-                await app.send_message(target_chat_id, msg.text.markdown, reply_to_message_id=topic_id)
+                cleaned_text = clean_text_message(msg.text.markdown if hasattr(msg.text, 'markdown') else str(msg.text), sender)
+                if not cleaned_text.strip():
+                    branding_tag = get_user_branding_tag(sender)
+                    cleaned_text = f"> **{branding_tag}**"
+                await app.send_message(target_chat_id, cleaned_text, reply_to_message_id=topic_id)
                 return True
 
             custom_caption = get_user_caption_preference(sender)
@@ -1011,7 +1084,8 @@ async def copy_message_with_chat_id(app, userbot, sender, chat_id, message_id, e
 
             if file and str(file).lower().endswith('.pdf') and not msg.caption:
                 filename = os.path.basename(file)
-                final_caption = f"> **{filename}**\n\n> **⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**"
+                tag = get_user_branding_tag(sender)
+                final_caption = f"> **{filename}**\n\n> **{tag}**"
             file_size = os.path.getsize(file)
 
             if msg.photo:
@@ -1066,7 +1140,7 @@ async def send_media_message(app, target_chat_id, msg, caption, topic_id):
             if ext.lower() != '.pdf':
                 ext = '.pdf'
             formatted_filename = f"{base_name.strip()} ⚝{ext}".strip()
-            caption = f"> **{formatted_filename}**\n\n> **⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**"
+            caption = f"> **{formatted_filename}**\n\n> **{DEFAULT_BRANDING_TAG}**"
         elif caption:
             # If caption exists → keep it same, just replace links if needed
             caption = re.sub(
@@ -1079,7 +1153,7 @@ async def send_media_message(app, target_chat_id, msg, caption, topic_id):
             caption = f"🗃 {file_name}"
         else:
             # If nothing → fallback
-            caption = "**⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**"
+            caption = f"> **{DEFAULT_BRANDING_TAG}**"
 
         # Send the message with the right method
         if msg.video:
@@ -1141,82 +1215,60 @@ def replace_fancy_and_emoji(text: str) -> str:
 def format_caption(original_caption, sender, custom_caption, filename=None):
     delete_words = load_delete_words(sender)
     replacements = load_replacement_words(sender)
+    branding_tag = get_user_branding_tag(sender)
 
     if not original_caption:
         original_caption = ""
 
-    # Clean Chaudhary fancy text first
+    # Remove zero-width characters
+    original_caption = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', original_caption)
+
+    # Remove HTML tags
+    original_caption = re.sub(r'<[^>]+>', '', original_caption)
+
+    # Clean Chaudhary fancy text
     original_caption = remove_chaudhary_fancy(original_caption)
 
-    original_caption = original_caption.replace("➪ @PDF_X9 🦋 ❞", "**⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**")
-    original_caption = original_caption.replace("@PDF_X9", "**⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**")
+    # Replace known branding tags from other bots
+    other_tags = [
+        "➪ @PDF_X9 🦋 ❞", "@PDF_X9", "➪ @PDF_X9 🦋",
+        "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗", "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝",
+    ]
+    for tag in other_tags:
+        original_caption = original_caption.replace(tag, '')
 
-    # ✅ Clean fancy characters and replace emojis
-    #original_caption = replace_fancy_and_emoji(original_caption)
+    # Remove unwanted branding patterns
+    branding_patterns = [
+        r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*',
+        r'(?i)[*_]*team[\s_\-\.]*sp[ay]+[*_]*',
+        r'(?i)[*_]*team[\s_\-\.]*spy[\s_\-\.]*pro[*_]*',
+        r"(?i)[*_]*let'?s\s*help[*_]*",
+        r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
+        r'(?i)devgagan',
+        r'(?i)chosen\s*one',
+    ]
+    for pattern in branding_patterns:
+        original_caption = re.sub(pattern, '', original_caption)
 
-    # ✅ Remove unwanted branding and aggressive garbage cleanup
-    original_caption = re.sub(r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*', '', original_caption)
-    original_caption = re.sub(r'(?i)[*_]*team[\s_\-\.]*spay[*_]*', '', original_caption)
-    original_caption = re.sub(r'(?i)[*_]*let\'?s\s*help[*_]*', '', original_caption)
-    original_caption = re.sub(r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?', '', original_caption)
-
-    # ✅ Remove all hashtags like #Movie
+    # Remove all hashtags
     original_caption = re.sub(r'#\S+', '', original_caption)
 
-    # ✅ Replace @mentions aggressively
-    user_tag = get_user_rename_preference(sender)
-    original_caption = re.sub(r'@\w+', user_tag, original_caption)
+    # Remove ALL @mentions
+    original_caption = re.sub(r'@\w+', '', original_caption)
 
-    # ✅ Replace telegram links
+    # Remove ALL URLs
+    original_caption = re.sub(r'https?://\S+|www\.\S+|t\.me/\S+|telegram\.me/\S+', '', original_caption)
+
+    # Replace "Extracted/Downloaded/Uploaded By" patterns
     original_caption = re.sub(
-        r'https?://(t\.me|telegram\.me)/[^\s]+',
-        'https://t.me/stolen_happines',
+        r'(?i)(📩|⏫)?\s*(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*',
+        '',
         original_caption
     )
-    # Replace other links with 🖤 to prevent unwanted redirection
-    original_caption = re.sub(r'https?://\S+|www\.\S+', '🖤', original_caption)
 
-    # ✅ Replace "Extracted By" with custom credit    
-    original_caption = re.sub(
-        r'(📩)?\s*(Extracted[\s_]*By)\s*[:➤>–\-]*\s*.*',
-        r'**⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**',
-        original_caption,
-        flags=re.IGNORECASE
-    )
-
-    # ✅ Replace "Downloaded By" with bot handle
-    original_caption = re.sub(
-        r'(📩)?\s*(Downloaded[\s_]*By)\s*[:➤>–\-]*\s*.*',
-        r'**⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**',
-        original_caption,
-        flags=re.IGNORECASE
-    )
-
-    # ✅ Replace "Downloaded by aia" specifically just in case
-    original_caption = re.sub(
-        r'(📩)?\s*Downloaded[\s_]*by[\s_]*aia.*',
-        r'**⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**',
-        original_caption,
-        flags=re.IGNORECASE
-    )
-
-    # ✅ Replace "Uploaded By" with custom tag
-    original_caption = re.sub(
-        r'(⏫)?\s*<u>?\s*(Uploaded[\s_]*By)\s*[➤:>–\-]*\s*[^<\n]+</u>?',
-        r'**⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**',
-        original_caption,
-        flags=re.IGNORECASE
-    )
-
-    # Ensure there is only one "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗" tag at the very end if it was added/present
-    tag_pattern = r'(?i)(?:\*\*|<b>|🖤|⚝|\s)*(?:𝗝𝘂𝘀𝘁[\s_]*𝗙ꪮ𝗿[\s_]*𝗬ꪮ𝘂|just[\s_]*for[\s_]*you)(?:\*\*|</b>|💗|\s)*'
-    if re.search(tag_pattern, original_caption):
-        cleaned_text = re.sub(tag_pattern, '', original_caption)
-        cleaned_text = cleaned_text.strip()
-        if cleaned_text:
-            original_caption = cleaned_text + "\n\n**⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**"
-        else:
-            original_caption = "**⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗**"
+    # Remove markdown artifacts
+    original_caption = re.sub(r'\*{3,}', '', original_caption)
+    original_caption = re.sub(r'_{3,}', '', original_caption)
 
     # 🔁 Delete unwanted words
     for word in delete_words:
@@ -1226,17 +1278,32 @@ def format_caption(original_caption, sender, custom_caption, filename=None):
     for old, new in replacements.items():
         original_caption = original_caption.replace(old, new)
 
-    # ✅ Symbol replacements
+    # Symbol replacements
     original_caption = original_caption.replace("[", "〘").replace("]", "〙").replace("(", "〘").replace(")", "〙")
     original_caption = original_caption.replace("📕", "📓")
     original_caption = original_caption.replace("📽️", "🍀")
 
+    # Collapse whitespace
+    original_caption = re.sub(r'[ \t]+', ' ', original_caption)
+    original_caption = re.sub(r'\n{3,}', '\n\n', original_caption)
+    original_caption = original_caption.strip()
+
+    # Check custom caption
     if not custom_caption:
         custom_caption = get_user_caption_preference(sender)
 
-    # Apply placeholders
-    original_caption = apply_custom_caption_placeholders(custom_caption, original_caption, filename)
-    return original_caption
+    # Apply placeholders if custom caption exists
+    if custom_caption:
+        original_caption = apply_custom_caption_placeholders(custom_caption, original_caption, filename)
+        return original_caption
+
+    # Build final blockquote caption: filename on top, branding tag below
+    if original_caption:
+        return f"> {original_caption}\n\n> **{branding_tag}**"
+    elif filename:
+        return f"> **{filename}**\n\n> **{branding_tag}**"
+    else:
+        return f"> **{branding_tag}**"
 
 # ------------------------ Button Mode Editz FOR SETTINGS ----------------------------
 
@@ -1312,6 +1379,29 @@ async def set_caption_command(user_id, custom_caption):
 
 get_user_rename_preference = lambda user_id: user_rename_preferences.get(str(user_id), '⚝')
 
+# --- Branding Tag Selection ---
+BRANDING_TAGS = {
+    "justforyou": "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗",
+    "stolenhappiness": "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝",
+}
+DEFAULT_BRANDING_TAG = "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗"
+
+def get_user_branding_tag(user_id):
+    """Get user's selected branding tag from MongoDB."""
+    try:
+        user_data = collection.find_one({"_id": int(user_id)})
+        if not user_data:
+            user_data = collection.find_one({"_id": str(user_id)})
+        if user_data and "branding_tag" in user_data:
+            return user_data["branding_tag"]
+    except Exception as e:
+        print(f"Error getting branding tag: {e}")
+    return DEFAULT_BRANDING_TAG
+
+def set_user_branding_tag(user_id, tag):
+    """Save user's branding tag to MongoDB."""
+    save_user_data(user_id, "branding_tag", tag)
+
 def get_user_caption_preference(user_id):
     try:
         user_data = collection.find_one({"_id": int(user_id)})
@@ -1371,7 +1461,7 @@ async def send_settings_message(chat_id, user_id):
     buttons = [
         [Button.inline("💀 Forward to Chat", b'setchat'), Button.inline("✏️ Set Rename Tag", b'setrename')],
         [Button.inline("🔆 Set Caption", b'setcaption'), Button.inline("💠 Replace Words", b'setreplacement')],
-        [Button.inline("‼️ Remove Words 🗑️", b'delete')],
+        [Button.inline("‼️ Remove Words 🗑️", b'delete'), Button.inline("🏷️ Branding Tag", b'settag')],
         [Button.inline("🖼️ Set Thumbnail", b'setthumb'), Button.inline("🧲 Remove Thumbnail", b'remthumb')],
         [Button.inline("📄 Set PDF Watermark", b'setpdfwatermark'), Button.inline("🗑️ Remove PDF Watermark", b'rempdfwatermark')],
         [Button.inline("📤 Upload Method", b'uploadmethod'), Button.inline("⛔ Logout", b'logout')],
@@ -1406,6 +1496,34 @@ async def callback_query_handler(event):
     elif data == 'setrename':
         await event.respond("✏️ Send the **rename tag** you want to set your custom name")
         sessions[user_id] = 'setrename'
+
+    elif data == 'settag':
+        current_tag = get_user_branding_tag(user_id)
+        tag_buttons = [
+            [Button.inline(f"⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗 {'✅' if 'Just' in current_tag or '𝗝𝘂𝘀𝘁' in current_tag else ''}", b'tag_justforyou')],
+            [Button.inline(f"🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ {'✅' if 'Sᴛꪮʟᴇɴ' in current_tag else ''}", b'tag_stolenhappiness')],
+            [Button.inline("✏️ Custom Tag (Type your own)", b'tag_custom')],
+        ]
+        await event.edit(
+            f"🏷️ **Select Your Branding Tag**\n\n"
+            f"Current: **{current_tag}**\n\n"
+            f"This tag appears in your captions and PDF files.",
+            buttons=tag_buttons
+        )
+
+    elif data == 'tag_justforyou':
+        tag = BRANDING_TAGS["justforyou"]
+        set_user_branding_tag(user_id, tag)
+        await event.edit(f"✅ Branding tag set to:\n\n**{tag}**")
+
+    elif data == 'tag_stolenhappiness':
+        tag = BRANDING_TAGS["stolenhappiness"]
+        set_user_branding_tag(user_id, tag)
+        await event.edit(f"✅ Branding tag set to:\n\n**{tag}**")
+
+    elif data == 'tag_custom':
+        await event.respond("✏️ Send your **custom branding tag** text:")
+        sessions[user_id] = 'setbrandingtag'
 
     elif data == 'setcaption':
         await event.respond("📝 Send the **caption format** (you can include variables like {filename}, {size}):")
@@ -1590,6 +1708,14 @@ async def handle_user_input(event):
                     replacements[word] = replace_word
                     save_replacement_words(user_id, replacements)
                     await event.respond(f"⇆ Replacement saved ⇆ \n\n 🌚 {word} ≫ {replace_word} 🌝")
+
+        elif session_type == 'setbrandingtag':
+            custom_tag = event.text.strip()
+            if custom_tag:
+                set_user_branding_tag(user_id, custom_tag)
+                await event.respond(f"✅ Custom branding tag set to:\n\n**{custom_tag}**")
+            else:
+                await event.respond("❌ Tag cannot be empty.")
 
         elif session_type == 'addsession':
             session_string = event.text

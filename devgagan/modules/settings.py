@@ -18,9 +18,10 @@ def get_main_settings_keyboard():
         ],
         [
             InlineKeyboardButton("🧹 Text Cleaning", callback_data="settings_cleaning"),
-            InlineKeyboardButton("🔄 Reset All", callback_data="reset_all_settings")
+            InlineKeyboardButton("🏷️ Branding Tag", callback_data="settings_tag")
         ],
         [
+            InlineKeyboardButton("🔄 Reset All", callback_data="reset_all_settings"),
             InlineKeyboardButton("❌ Close Menu", callback_data="close_settings")
         ]
     ]
@@ -80,6 +81,16 @@ def get_cleaning_keyboard(user_data):
     ]
     return InlineKeyboardMarkup(buttons)
 
+def get_tag_keyboard(user_data):
+    current_tag = user_data.get("branding_tag", "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗")
+    buttons = [
+        [InlineKeyboardButton(f"⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗 {'✅' if 'Just' in current_tag or '𝗝𝘂𝘀𝘁' in current_tag else ''}", callback_data="set_tag_justforyou")],
+        [InlineKeyboardButton(f"🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ {'✅' if 'Sᴛꪮʟᴇɴ' in current_tag else ''}", callback_data="set_tag_stolenhappiness")],
+        [InlineKeyboardButton("✏️ Custom Tag (Type your own)", callback_data="set_tag_custom")],
+        [InlineKeyboardButton("🔙 Back to Menu", callback_data="back_to_main")]
+    ]
+    return InlineKeyboardMarkup(buttons)
+
 # ────── Command Handler ──────
 
 @app.on_message(filters.command("settings") & filters.private)
@@ -91,7 +102,7 @@ async def settings_command(client, message):
 
 # ────── Navigation & Main Callbacks ──────
 
-@app.on_callback_query(filters.regex(r"^(settings_filters|back_to_main|close_settings|settings_thumb|settings_chatid|settings_cleaning)$"))
+@app.on_callback_query(filters.regex(r"^(settings_filters|back_to_main|close_settings|settings_thumb|settings_chatid|settings_cleaning|settings_tag)$"))
 async def main_nav_callback(client, callback_query: CallbackQuery):
     data = callback_query.data
     user_id = callback_query.from_user.id
@@ -136,6 +147,14 @@ async def main_nav_callback(client, callback_query: CallbackQuery):
         text += "> These rules apply to original captions before your custom caption is added."
         
         await callback_query.message.edit_text(text, reply_markup=get_cleaning_keyboard(user_data))
+    elif data == "settings_tag":
+        current_tag = user_data.get("branding_tag", "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗")
+        await callback_query.message.edit_text(
+            f"🏷️ **Branding Tag Settings**\n\n"
+            f"**Current Branding Tag:**\n`{current_tag}`\n\n"
+            f"Choose a preset branding tag or set your own custom one. This tag appears in captions and PDF files.",
+            reply_markup=get_tag_keyboard(user_data)
+        )
 
 # ────── Caption Actions ──────
 
@@ -174,7 +193,7 @@ async def caption_actions_callback(client, callback_query: CallbackQuery):
             await db.set_caption(user_id, ask.text)
             await ask.reply(f"✅ **Caption updated successfully!**\n\n`{ask.text}`")
         
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.5)
         await settings_command(client, ask)
         return
 
@@ -221,7 +240,7 @@ async def thumb_actions_callback(client, callback_query: CallbackQuery):
         else:
             await ask.reply("❌ **Invalid input. Please send a photo.**")
         
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.5)
         await settings_command(client, ask)
         return
 
@@ -252,7 +271,7 @@ async def chatid_actions_callback(client, callback_query: CallbackQuery):
             except ValueError:
                 await ask.reply("❌ **Invalid Chat ID format. Make sure it's a number starting with -100.**")
         
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.5)
         await settings_command(client, ask)
         return
 
@@ -278,7 +297,7 @@ async def cleaning_actions_callback(client, callback_query: CallbackQuery):
             words = ask.text.split()
             await db.clean_words(user_id, words)
             await ask.reply(f"✅ **Added {len(words)} words to cleaning list.**")
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.5)
         await settings_command(client, ask)
         return
     elif data == "set_replacement":
@@ -292,11 +311,52 @@ async def cleaning_actions_callback(client, callback_query: CallbackQuery):
             await ask.reply(f"✅ **Rule added:** `{to_replace}` ➜ `{replace_with}`")
         else:
              await ask.reply("❌ **Invalid format.**")
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.5)
         await settings_command(client, ask)
         return
 
     await main_nav_callback(client, callback_query)
+
+# ────── Branding Tag Actions ──────
+
+@app.on_callback_query(filters.regex(r"^(set_tag_justforyou|set_tag_stolenhappiness|set_tag_custom)$"))
+async def tag_actions_callback(client, callback_query: CallbackQuery):
+    data = callback_query.data
+    user_id = callback_query.from_user.id
+
+    if data == "set_tag_justforyou":
+        tag = "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗"
+        await db.update_data(user_id, {"branding_tag": tag})
+        await callback_query.answer("Branding tag set to Just For You...💗")
+        
+    elif data == "set_tag_stolenhappiness":
+        tag = "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
+        await db.update_data(user_id, {"branding_tag": tag})
+        await callback_query.answer("Branding tag set to Stolen Happiness")
+        
+    elif data == "set_tag_custom":
+        await callback_query.message.delete()
+        ask = await client.ask(user_id, "🏷️ **Send your custom branding tag now.**\n\n> Send /cancel to abort.")
+        
+        if ask.text == "/cancel":
+            await ask.reply("Action cancelled.")
+        else:
+            await db.update_data(user_id, {"branding_tag": ask.text})
+            await ask.reply(f"✅ **Branding tag updated successfully!**\n\n`{ask.text}`")
+        
+        await asyncio.sleep(0.5)
+        await settings_command(client, ask)
+        return
+
+    # Refresh page
+    user_data = await db.get_data(user_id) or {}
+    current_tag = user_data.get("branding_tag", "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗")
+    await callback_query.message.edit_text(
+        f"🏷️ **Branding Tag Settings**\n\n"
+        f"**Current Branding Tag:**\n`{current_tag}`\n\n"
+        f"Choose a preset branding tag or set your own custom one. This tag appears in captions and PDF files.",
+        reply_markup=get_tag_keyboard(user_data)
+    )
 
 # ────── Filter & Reset Actions ──────
 

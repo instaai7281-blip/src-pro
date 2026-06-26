@@ -231,7 +231,7 @@ async def log_forward_cmd(_, message):
                                 
                             success_count += 1
                             # Delay to prevent FloodWait rate limits
-                            await asyncio.sleep(1.2)
+                            await asyncio.sleep(0.3)
                         except FloodWait as e:
                             await asyncio.sleep(e.value + 2)
                             try:
