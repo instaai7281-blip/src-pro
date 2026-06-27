@@ -23,8 +23,11 @@ db = db.users_db
 
 async def get_users():
   user_list = []
-  async for user in db.users.find({"user": {"$gt": 0}}):
-    user_list.append(user['user'])
+  try:
+    async for user in db.find({"user": {"$gt": 0}}):
+      user_list.append(user['user'])
+  except Exception as e:
+    print(f"Error getting users from db: {e}")
   return user_list
 
 
@@ -40,7 +43,10 @@ async def add_user(user):
   if user in users:
     return
   else:
-    await db.users.insert_one({"user": user})
+    try:
+      await db.insert_one({"user": user})
+    except Exception as e:
+      print(f"Error adding user to db: {e}")
 
 
 async def del_user(user):
@@ -48,7 +54,24 @@ async def del_user(user):
   if not user in users:
     return
   else:
-    await db.users.delete_one({"user": user})
+    try:
+      await db.delete_one({"user": user})
+    except Exception as e:
+      print(f"Error deleting user from db: {e}")
+      
+async def get_all_registered_users():
+  users = await get_users()
+  try:
+    from devgagan.core.mongo.db import db as settings_db
+    async for doc in settings_db.find({}):
+      if "_id" in doc:
+        try:
+          users.append(int(doc["_id"]))
+        except ValueError:
+          pass
+  except Exception as e:
+    print(f"Error getting users from settings db: {e}")
+  return list(set(users))
     
 
 

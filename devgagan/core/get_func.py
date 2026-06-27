@@ -377,6 +377,7 @@ async def upload_media(sender, target_chat_id, file, caption, edit, topic_id, th
 
         # ────── Pyrogram Upload ──────
         if upload_method == "Pyrogram":
+            has_spoiler = get_user_spoiler_preference(sender)
             if ext in video_formats:
                 # Send to user
                 dm = await app.send_video(
@@ -390,7 +391,8 @@ async def upload_media(sender, target_chat_id, file, caption, edit, topic_id, th
                     reply_to_message_id=topic_id,
                     parse_mode=ParseMode.MARKDOWN,
                     progress=progress_bar,
-                    progress_args=("╔══━⚡️Uploading...⚡️━══╗\n", edit, time.time())
+                    progress_args=("╔══━⚡️Uploading...⚡️━══╗\n", edit, time.time()),
+                    has_spoiler=has_spoiler
                 )
 
             elif ext in image_formats:
@@ -400,7 +402,8 @@ async def upload_media(sender, target_chat_id, file, caption, edit, topic_id, th
                     caption=None,
                     progress=progress_bar,
                     reply_to_message_id=topic_id,
-                    progress_args=("╔══━⚡️Uploading...⚡️━══╗\n", edit, time.time())
+                    progress_args=("╔══━⚡️Uploading...⚡️━══╗\n", edit, time.time()),
+                    has_spoiler=has_spoiler
                 )
 
             else:
@@ -1023,7 +1026,7 @@ async def copy_message_with_chat_id(app, userbot, sender, chat_id, message_id, e
             target_chat_id, topic_id = map(int, target_chat_id.split('/', 1))
 
         if msg.media:
-            result = await send_media_message(app, target_chat_id, msg, final_caption, topic_id)
+            result = await send_media_message(app, target_chat_id, msg, final_caption, topic_id, sender)
         elif msg.text:
             cleaned_text = clean_text_message(msg.text.markdown if hasattr(msg.text, 'markdown') else str(msg.text), sender)
             if not cleaned_text.strip():
@@ -1071,14 +1074,15 @@ async def copy_message_with_chat_id(app, userbot, sender, chat_id, message_id, e
             # Try fast copy via userbot send_media first before downloading
             if not getattr(msg, "has_protected_content", False) and not force_extraction:
                 try:
+                    has_spoiler = get_user_spoiler_preference(sender)
                     if msg.video:
-                        await userbot.send_video(target_chat_id, msg.video, caption=final_caption, reply_to_message_id=topic_id)
+                        await userbot.send_video(target_chat_id, msg.video, caption=final_caption, reply_to_message_id=topic_id, has_spoiler=has_spoiler)
                         return True
                     elif msg.document:
                         await userbot.send_document(target_chat_id, msg.document, caption=final_caption, reply_to_message_id=topic_id)
                         return True
                     elif msg.photo:
-                        await userbot.send_photo(target_chat_id, msg.photo, caption=final_caption, reply_to_message_id=topic_id)
+                        await userbot.send_photo(target_chat_id, msg.photo, caption=final_caption, reply_to_message_id=topic_id, has_spoiler=has_spoiler)
                         return True
                     elif msg.audio:
                         await userbot.send_audio(target_chat_id, msg.audio, caption=final_caption, reply_to_message_id=topic_id)
@@ -1142,7 +1146,7 @@ async def copy_message_with_chat_id(app, userbot, sender, chat_id, message_id, e
     
     return False
 
-async def send_media_message(app, target_chat_id, msg, caption, topic_id):
+async def send_media_message(app, target_chat_id, msg, caption, topic_id, sender):
     try:
         file_name = None
 
@@ -1183,12 +1187,14 @@ async def send_media_message(app, target_chat_id, msg, caption, topic_id):
             caption = f"> **{DEFAULT_BRANDING_TAG}**"
 
         # Send the message with the right method
+        has_spoiler = get_user_spoiler_preference(sender)
         if msg.video:
             return await app.send_video(
                 target_chat_id,
                 msg.video.file_id,
                 caption=caption,
                 reply_to_message_id=topic_id,
+                has_spoiler=has_spoiler
             )
 
         if msg.document:
@@ -1203,8 +1209,9 @@ async def send_media_message(app, target_chat_id, msg, caption, topic_id):
             return await app.send_photo(
                 target_chat_id,
                 msg.photo.file_id,
-                caption=None,
+                caption=caption,
                 reply_to_message_id=topic_id,
+                has_spoiler=has_spoiler
             )
 
     except Exception as e:
@@ -1434,6 +1441,13 @@ def load_user_session(user_id):
 set_dupload = lambda user_id, value: save_user_data(user_id, "dupload", value)
 get_dupload = lambda user_id: load_user_data(user_id, "dupload", False)
 
+# Spoiler preference functions
+def get_user_spoiler_preference(user_id):
+    return load_user_data(user_id, "spoiler", False)
+
+def set_user_spoiler_preference(user_id, value):
+    save_user_data(user_id, "spoiler", value)
+
 # User preferences storage
 user_rename_preferences = {}
 user_caption_preferences = {}
@@ -1592,23 +1606,25 @@ async def settings_command(event):
     user_id = event.sender_id
     await send_settings_message(event.chat_id, user_id)
 
-async def send_settings_message(chat_id, user_id):
-    buttons = [
+def get_telethon_settings_buttons(user_id):
+    is_spoiler = get_user_spoiler_preference(user_id)
+    return [
         [Button.inline("💀 Forward to Chat", b'setchat'), Button.inline("✏️ Set Rename Tag", b'setrename')],
         [Button.inline("🔆 Set Caption", b'setcaption'), Button.inline("💠 Replace Words", b'setreplacement')],
         [Button.inline("‼️ Remove Words 🗑️", b'delete'), Button.inline("🏷️ Branding Tag", b'settag')],
         [Button.inline("🖼️ Set Thumbnail", b'setthumb'), Button.inline("🧲 Remove Thumbnail", b'remthumb')],
         [Button.inline("📄 Set PDF Watermark", b'setpdfwatermark'), Button.inline("🗑️ Remove PDF Watermark", b'rempdfwatermark')],
-        [Button.inline("📤 Upload Method", b'uploadmethod'), Button.inline("⛔ Logout", b'logout')],
-        [Button.inline("♻️ Reset All Settings ☢️", b'reset')],
+        [Button.inline("📤 Upload Method", b'uploadmethod'), Button.inline(f"🌶️ Spoiler: {'ON' if is_spoiler else 'OFF'}", b'togglespoiler')],
+        [Button.inline("♻️ Reset All Settings ☢️", b'reset'), Button.inline("⛔ Logout", b'logout')],
         [Button.url("💞 Contact Owner 🦋", "https://t.me/Chosen_Onex_bot")]
     ]
-    
+
+async def send_settings_message(chat_id, user_id):
     await gf.send_file(
         chat_id,
         file=SET_PIC,
         caption=MESS,
-        buttons=buttons
+        buttons=get_telethon_settings_buttons(user_id)
     )
 
 
@@ -1728,6 +1744,13 @@ async def callback_query_handler(event):
             await event.respond("✅ You have been **logged out** and your session was removed successfully.")
         else:
             await event.respond("⚠️ You are not logged in.")
+
+    elif data == 'togglespoiler':
+        current_val = get_user_spoiler_preference(user_id)
+        new_val = not current_val
+        set_user_spoiler_preference(user_id, new_val)
+        await event.answer(f"Spoiler mode set to {'ON' if new_val else 'OFF'}")
+        await event.edit(buttons=get_telethon_settings_buttons(user_id))
 
     elif data == 'setthumb':
         pending_photos[user_id] = True

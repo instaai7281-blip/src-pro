@@ -3,11 +3,12 @@ from pyrogram import filters, Client
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from devgagan import app
 from devgagan.core.mongo import db
-from devgagan.core.get_func import get_user_branding_tag, set_user_branding_tag, get_user_custom_tags, add_user_custom_tag, delete_user_custom_tag
+from devgagan.core.get_func import get_user_branding_tag, set_user_branding_tag, get_user_custom_tags, add_user_custom_tag, delete_user_custom_tag, get_user_spoiler_preference, set_user_spoiler_preference
 
 # ────── Keyboards ──────
 
-def get_main_settings_keyboard():
+def get_main_settings_keyboard(user_id):
+    is_spoiler = get_user_spoiler_preference(user_id)
     buttons = [
         [
             InlineKeyboardButton("📝 Custom Caption", callback_data="settings_caption"),
@@ -20,6 +21,9 @@ def get_main_settings_keyboard():
         [
             InlineKeyboardButton("🧹 Text Cleaning", callback_data="settings_cleaning"),
             InlineKeyboardButton("🏷️ Branding Tag", callback_data="settings_tag")
+        ],
+        [
+            InlineKeyboardButton(f"🌶️ Spoiler Mode: {'ON ✅' if is_spoiler else 'OFF ❌'}", callback_data="toggle_spoiler_settings")
         ],
         [
             InlineKeyboardButton("🔄 Reset All", callback_data="reset_all_settings"),
@@ -112,7 +116,7 @@ def get_tag_keyboard(user_id):
 async def settings_command(client, message):
     await message.reply_text(
         "⚙️ **Personalize Your Experience**\n\nConfigure your extraction preferences, branding, and filters using the buttons below.",
-        reply_markup=get_main_settings_keyboard()
+        reply_markup=get_main_settings_keyboard(message.chat.id)
     )
 
 # ────── Navigation & Main Callbacks ──────
@@ -129,7 +133,7 @@ async def main_nav_callback(client, callback_query: CallbackQuery):
     elif data == "back_to_main":
         await callback_query.message.edit_text(
             "⚙️ **Personalize Your Experience**\n\nConfigure your extraction preferences, branding, and filters using the buttons below.",
-            reply_markup=get_main_settings_keyboard()
+            reply_markup=get_main_settings_keyboard(user_id)
         )
     elif data == "settings_filters":
         await callback_query.message.edit_text(
@@ -446,3 +450,16 @@ async def reset_actions_callback(client, callback_query: CallbackQuery):
     
     updated_data = await db.get_data(user_id) or {}
     await main_nav_callback(client, callback_query)
+
+# ────── Spoiler Settings Toggle ──────
+
+@app.on_callback_query(filters.regex(r"^toggle_spoiler_settings$"))
+async def toggle_spoiler_settings_callback(client, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    current_val = get_user_spoiler_preference(user_id)
+    new_val = not current_val
+    set_user_spoiler_preference(user_id, new_val)
+    await callback_query.answer(f"Spoiler mode set to {'ON' if new_val else 'OFF'}")
+    await callback_query.message.edit_reply_markup(
+        reply_markup=get_main_settings_keyboard(user_id)
+    )

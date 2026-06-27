@@ -86,10 +86,14 @@ async def process_audio(client, event, url, cookies_env_var=None):
         cookies = os.getenv(cookies_env_var)
  
     temp_cookie_path = None
+    cookiefile_path = None
     if cookies:
         with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.txt') as temp_cookie_file:
             temp_cookie_file.write(cookies)
             temp_cookie_path = temp_cookie_file.name
+        cookiefile_path = temp_cookie_path
+    elif os.path.exists("cookies.txt"):
+        cookiefile_path = os.path.abspath("cookies.txt")
  
     start_time = time.time()
     random_filename = f"@team_spy_pro_{event.sender_id}"
@@ -98,7 +102,7 @@ async def process_audio(client, event, url, cookies_env_var=None):
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': f"{random_filename}.%(ext)s",
-        'cookiefile': temp_cookie_path,
+        'cookiefile': cookiefile_path,
         'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
         'quiet': False,
         'noplaylist': True,
@@ -320,6 +324,7 @@ async def process_video(client, event, url, cookies_env_var, check_duration_and_
     logger.info(f"Received link: {url}")
      
     cookies = None
+    THUMB = None
     if cookies_env_var:
         cookies = os.getenv(cookies_env_var)
  
@@ -330,11 +335,15 @@ async def process_video(client, event, url, cookies_env_var, check_duration_and_
  
      
     temp_cookie_path = None
+    cookiefile_path = None
     if cookies:
         with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.txt') as temp_cookie_file:
             temp_cookie_file.write(cookies)
             temp_cookie_path = temp_cookie_file.name
         logger.info(f"Created temporary cookie file at: {temp_cookie_path}")
+        cookiefile_path = temp_cookie_path
+    elif os.path.exists("cookies.txt"):
+        cookiefile_path = os.path.abspath("cookies.txt")
  
      
     thumbnail_file = None
@@ -344,7 +353,7 @@ async def process_video(client, event, url, cookies_env_var, check_duration_and_
     ydl_opts = {
         'outtmpl': download_path,
         'format': 'best',
-        'cookiefile': temp_cookie_path if temp_cookie_path else None,
+        'cookiefile': cookiefile_path,
         'writethumbnail': True,
         'verbose': True,
     }

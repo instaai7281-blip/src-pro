@@ -32,6 +32,59 @@ async def schedule_expiry_check():
         await asyncio.sleep(3600)  # Check every hour
         gc.collect()
 
+# Function to broadcast upgrade plans daily at 7 PM
+async def daily_plans_broadcast_task():
+    try:
+        from devgagan.core.mongo.users_db import get_all_registered_users
+        from devgagan.core.func import chk_user
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        from devgagan import app
+        
+        users = await get_all_registered_users()
+        upgrade_msg = (
+            "⚡ **𝖴𝗉𝗀𝗋𝖺𝖽𝖾 𝗍𝗈 𝖯𝖱𝖮!** ⚡\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "✨ **𝖴𝗇𝗅𝗈𝖼𝗄 𝖯𝗋𝖾𝗆𝗂𝗎𝗆 𝖥𝖾𝖺𝗍𝗎𝗋𝖾𝗌:**\n"
+            "• **𝖴𝗇𝗅𝗂𝗆𝗂𝗍𝖾𝖽 𝖡𝖺𝗍𝖼𝗁 𝖫𝗂𝗆𝗂𝗍𝗌** (5000+ files!)\n"
+            "• **𝖲𝗎𝗉𝖾𝗋 𝖥𝖺𝗌𝗍 𝖯𝖺𝗋𝖺𝗅𝗅𝖾𝗅 𝖣𝗈𝗐𝗇𝗅𝗈𝖺𝖽𝗂𝗀** 🚀\n"
+            "• **𝖭𝗈 𝖠𝖽𝗌 & 𝖢𝗎𝗌𝗍𝗈𝗆 𝖡𝗋𝖺𝗇𝖽𝗂𝗇𝗀** 🏷️\n"
+            "• **𝖣𝗂𝗋𝖾𝖼𝗍 𝖱𝖾𝗌𝖾𝗅𝗅𝖾𝗋 𝖲𝗎𝗉𝗉𝗈𝗋𝗍** 👑\n\n"
+            "👉 Use `/plans` to view details & upgrade today!"
+        )
+        buttons = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],
+                [InlineKeyboardButton("💬 Contact Now", url="https://t.me/CHOSEN_ONEx_bot")],
+            ]
+        )
+        
+        count = 0
+        for uid in users:
+            try:
+                freecheck = await chk_user(None, uid)
+                if freecheck == 1:
+                    await app.send_message(uid, upgrade_msg, reply_markup=buttons)
+                    count += 1
+                    await asyncio.sleep(0.1)
+            except Exception:
+                pass
+        print(f"[DAILY BROADCAST] Sent daily plans upgrade message to {count} free users.")
+    except Exception as e:
+        print(f"[DAILY BROADCAST] Error: {e}")
+
+async def schedule_daily_plans_broadcast():
+    import datetime
+    last_sent_date = None
+    while True:
+        now = datetime.datetime.now()
+        if now.hour == 19 and now.minute == 0:
+            current_date = now.date()
+            if last_sent_date != current_date:
+                print(f"[DAILY BROADCAST] Starting daily 7 PM upgrade plans broadcast...")
+                await daily_plans_broadcast_task()
+                last_sent_date = current_date
+        await asyncio.sleep(30)
+
 async def devggn_boot():
     # Restore custom thumbnails from DB on startup
     from devgagan.core.mongo.db import load_all_thumbnails
@@ -74,7 +127,8 @@ License: MIT License
 """)
 
     asyncio.create_task(schedule_expiry_check())
-    print("Auto removal started ...")
+    asyncio.create_task(schedule_daily_plans_broadcast())
+    print("Auto removal and daily plans broadcast started ...")
     await idle()
     print("Bot stopped...")
 

@@ -20,7 +20,7 @@ import motor
 from devgagan import app
 from pyrogram import filters
 from config import OWNER_ID
-from devgagan.core.mongo.users_db import get_users, add_user, get_user
+from devgagan.core.mongo.users_db import get_users, add_user, get_user, get_all_registered_users
 from devgagan.core.mongo.plans_db import premium_users
 from pyrogram.types import Message
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
@@ -85,7 +85,7 @@ def time_formatter():
 @app.on_message(filters.command("stats") & filters.user(OWNER_ID))
 async def stats(client, message):
     start = time.time()
-    users = len(await get_users())
+    users = len(await get_all_registered_users())
     premium = await premium_users()
     ping = round((time.time() - start) * 1000)
     await message.reply_text(f"""
@@ -111,7 +111,7 @@ from pyrogram.types import (
 # /getusers command — OWNER only, private chat
 @app.on_message(filters.command("getusers") & filters.user(OWNER_ID) & filters.private)
 async def getusers_paginated(client, message: Message):
-    users = await get_users()
+    users = await get_all_registered_users()
     if not users:
         return await message.reply("🚫 No users found in the database.")
     await show_users_page(client, message.chat.id, users, page=0)
@@ -121,7 +121,7 @@ async def getusers_paginated(client, message: Message):
 @app.on_callback_query(filters.regex(r"^users_page_(\d+)$") & filters.user(OWNER_ID))
 async def paginate_users_callback(client, query: CallbackQuery):
     page = int(query.matches[0].group(1))
-    users = await get_users()
+    users = await get_all_registered_users()
     await show_users_page(client, query.message.chat.id, users, page, query)
 
 

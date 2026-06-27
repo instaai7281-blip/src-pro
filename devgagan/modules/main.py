@@ -440,6 +440,24 @@ async def execute_batch(user_id, base_url, cs, cl, is_tg_openmessage, freecheck)
             reply_markup=InlineKeyboardMarkup([[join_button]])
         )
         await app.send_message(user_id, f"Batch process {final_status}! ✨\nSuccess: {success_count} | Failed: {fail_count}")
+        if final_status == "completed" and freecheck == 1:
+            upgrade_msg = (
+                "⚡ **𝖴𝗉𝗀𝗋𝖺𝖽𝖾 𝗍𝗈 𝖯𝖱𝖮!** ⚡\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "✨ **𝖴𝗇𝗅𝗈𝖼𝗄 𝖯𝗋𝖾𝗆𝗂𝗎𝗆 𝖥𝖾𝖺𝗍𝗎𝗋𝖾𝗌:**\n"
+                "• **𝖴𝗇𝗅𝗂𝗆𝗂𝗍𝖾𝖽 𝖡𝖺𝗍𝖼𝗁 𝖫𝗂𝗆𝗂𝗍𝗌** (5000+ files!)\n"
+                "• **𝖲𝗎𝗉𝖾𝗋 𝖥𝖺𝗌𝗍 𝖯𝖺𝗋𝖺𝗅𝗅𝖾𝗅 𝖣𝗈𝗐𝗇𝗅𝗈𝖺𝖽𝗂𝗀** 🚀\n"
+                "• **𝖭𝗈 𝖠𝖽𝗌 & 𝖢𝗎𝗌𝗍𝗈𝗆 𝖡𝗋𝖺𝗇𝖽𝗂𝗇𝗀** 🏷️\n"
+                "• **𝖣𝗂𝗋𝖾𝖼𝗍 𝖱𝖾𝗌𝖾𝗅𝗅𝖾𝗋 𝖲𝗎𝗉𝗉𝗈𝗋𝗍** 👑\n\n"
+                "👉 Use `/plans` to view details & upgrade today!"
+            )
+            buttons = InlineKeyboardMarkup(
+                [
+                    [InlineKeyboardButton("📋 See Plans", callback_data="see_plan")],
+                    [InlineKeyboardButton("💬 Contact Now", url="https://t.me/CHOSEN_ONEx_bot")],
+                ]
+            )
+            await app.send_message(user_id, upgrade_msg, reply_markup=buttons)
         
         if final_status == "completed":
             target_chat_id = get_target_chat_id(user_id)
