@@ -43,6 +43,20 @@ async def devggn_boot():
 
     for all_module in ALL_MODULES:
         importlib.import_module("devgagan.modules." + all_module)
+
+    # Load Youtube downloader package modules dynamically
+    import glob
+    from os.path import basename
+    youtube_mod_files = glob.glob("Youtube/*.py")
+    for f in youtube_mod_files:
+        mod_name = basename(f)[:-3]
+        if mod_name not in ["__init__", "config"]:
+            try:
+                importlib.import_module(f"Youtube.{mod_name}")
+                print(f"Loaded Youtube module: {mod_name}")
+            except Exception as e:
+                print(f"Failed to load Youtube module {mod_name}: {e}")
+
     print("""
 ---------------------------------------------------
 Bot Deployed successfully ...

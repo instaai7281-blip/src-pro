@@ -3,6 +3,7 @@ from pyrogram import filters, Client
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from devgagan import app
 from devgagan.core.mongo import db
+from devgagan.core.get_func import get_user_branding_tag, set_user_branding_tag, get_user_custom_tags, add_user_custom_tag, delete_user_custom_tag
 
 # ────── Keyboards ──────
 
@@ -81,21 +82,26 @@ def get_cleaning_keyboard(user_data):
     ]
     return InlineKeyboardMarkup(buttons)
 
-def get_tag_keyboard(user_data):
-    current_tag = user_data.get("branding_tag", "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
+def get_tag_keyboard(user_id):
+    current_tag = get_user_branding_tag(user_id)
+    custom_tags = get_user_custom_tags(user_id)
     buttons = []
     
+    # 1) Stolen Happiness Preset
     is_sh_selected = (current_tag == "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
     buttons.append([InlineKeyboardButton(f"🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ {'✅' if is_sh_selected else ''}", callback_data="set_tag_stolenhappiness")])
     
-    if not is_sh_selected:
-        buttons.append([InlineKeyboardButton(f"✨ Custom: {current_tag} ✅", callback_data="set_tag_custom_select")])
+    # 2) Custom saved tags (up to 5)
+    for i, tag in enumerate(custom_tags):
+        is_active = (current_tag == tag)
         buttons.append([
-            InlineKeyboardButton("✏️ Edit Custom Tag", callback_data="set_tag_custom"),
-            InlineKeyboardButton("🗑️ Remove Custom Tag", callback_data="set_tag_custom_remove")
+            InlineKeyboardButton(f"✨ {tag[:20]}... {'✅' if is_active else ''}" if len(tag) > 20 else f"✨ {tag} {'✅' if is_active else ''}", callback_data=f"set_tag_select_{i}"),
+            InlineKeyboardButton("❌", callback_data=f"set_tag_delete_{i}")
         ])
-    else:
-        buttons.append([InlineKeyboardButton("✏️ Set Custom Tag", callback_data="set_tag_custom")])
+        
+    # 3) Add new custom tag button if less than 5
+    if len(custom_tags) < 5:
+        buttons.append([InlineKeyboardButton("➕ Add Custom Tag", callback_data="set_tag_add")])
         
     buttons.append([InlineKeyboardButton("🔙 Back to Menu", callback_data="back_to_main")])
     return InlineKeyboardMarkup(buttons)
@@ -157,12 +163,20 @@ async def main_nav_callback(client, callback_query: CallbackQuery):
         
         await callback_query.message.edit_text(text, reply_markup=get_cleaning_keyboard(user_data))
     elif data == "settings_tag":
-        current_tag = user_data.get("branding_tag", "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗")
+        current_tag = user_data.get("branding_tag", "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
+        preview_text = (
+            f"🏷️ **Branding Tag Settings**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"Current Tag: `{current_tag}`\n\n"
+            f"📝 **How it will look in your captions:**\n"
+            f"> 📁 **File:** `movie_title.mp4`\n"
+            f"> ───\n"
+            f"> **{current_tag}**\n\n"
+            f"This branding tag appears in the captions of your files and on PDF document pages. Select a preset or set a custom tag below:"
+        )
         await callback_query.message.edit_text(
-            f"🏷️ **Branding Tag Settings**\n\n"
-            f"**Current Branding Tag:**\n`{current_tag}`\n\n"
-            f"Choose a preset branding tag or set your own custom one. This tag appears in captions and PDF files.",
-            reply_markup=get_tag_keyboard(user_data)
+            preview_text,
+            reply_markup=get_tag_keyboard(callback_query.from_user.id)
         )
 
 # ────── Caption Actions ──────
@@ -328,46 +342,64 @@ async def cleaning_actions_callback(client, callback_query: CallbackQuery):
 
 # ────── Branding Tag Actions ──────
 
-@app.on_callback_query(filters.regex(r"^(set_tag_stolenhappiness|set_tag_custom|set_tag_custom_remove|set_tag_custom_select)$"))
+@app.on_callback_query(filters.regex(r"^(set_tag_stolenhappiness|set_tag_add|set_tag_select_\d+|set_tag_delete_\d+)$"))
 async def tag_actions_callback(client, callback_query: CallbackQuery):
     data = callback_query.data
     user_id = callback_query.from_user.id
 
     if data == "set_tag_stolenhappiness":
-        tag = "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
-        await db.update_data(user_id, {"branding_tag": tag})
-        await callback_query.answer("Branding tag set to Stolen Happiness")
+        set_user_branding_tag(user_id, "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
+        await callback_query.answer("Branding tag set to Stolen Happiness Preset")
         
-    elif data == "set_tag_custom_remove":
-        tag = "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
-        await db.update_data(user_id, {"branding_tag": tag})
-        await callback_query.answer("Custom branding tag removed")
-
-    elif data == "set_tag_custom_select":
-        await callback_query.answer("Custom tag is already active!")
-
-    elif data == "set_tag_custom":
+    elif data == "set_tag_add":
+        custom_tags = get_user_custom_tags(user_id)
+        if len(custom_tags) >= 5:
+            await callback_query.answer("❌ You can save up to 5 custom tags only! Delete one first.", show_alert=True)
+            return
+            
         await callback_query.message.delete()
         ask = await client.ask(user_id, "🏷️ **Send your custom branding tag now.**\n\n> Send /cancel to abort.")
         
         if ask.text == "/cancel":
             await ask.reply("Action cancelled.")
         else:
-            await db.update_data(user_id, {"branding_tag": ask.text})
-            await ask.reply(f"✅ **Branding tag updated successfully!**\n\n`{ask.text}`")
-        
+            success, msg = add_user_custom_tag(user_id, ask.text)
+            await ask.reply(f"{'✅' if success else '❌'} {msg}")
         await asyncio.sleep(0.5)
         await settings_command(client, ask)
         return
 
+    elif data.startswith("set_tag_select_"):
+        tag_index = int(data.split("_")[-1])
+        custom_tags = get_user_custom_tags(user_id)
+        if 0 <= tag_index < len(custom_tags):
+            tag = custom_tags[tag_index]
+            set_user_branding_tag(user_id, tag)
+            await callback_query.answer(f"Selected: {tag}")
+        else:
+            await callback_query.answer("Invalid tag index")
+
+    elif data.startswith("set_tag_delete_"):
+        tag_index = int(data.split("_")[-1])
+        success, msg = delete_user_custom_tag(user_id, tag_index)
+        await callback_query.answer(msg, show_alert=True)
+
     # Refresh page
     user_data = await db.get_data(user_id) or {}
     current_tag = user_data.get("branding_tag", "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
+    preview_text = (
+        f"🏷️ **Branding Tag Settings**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"Current Tag: `{current_tag}`\n\n"
+        f"📝 **How it will look in your captions:**\n"
+        f"> 📁 **File:** `movie_title.mp4`\n"
+        f"> ───\n"
+        f"> **{current_tag}**\n\n"
+        f"This branding tag appears in the captions of your files and on PDF document pages. Select a preset or set a custom tag below:"
+    )
     await callback_query.message.edit_text(
-        f"🏷️ **Branding Tag Settings**\n\n"
-        f"**Current Branding Tag:**\n`{current_tag}`\n\n"
-        f"Choose a preset branding tag or set your own custom one. This tag appears in captions and PDF files.",
-        reply_markup=get_tag_keyboard(user_data)
+        preview_text,
+        reply_markup=get_tag_keyboard(callback_query.from_user.id)
     )
 
 # ────── Filter & Reset Actions ──────

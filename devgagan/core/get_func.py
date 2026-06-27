@@ -703,13 +703,12 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
                 except Exception:
                     pass
             
-            file = await fast_download(
-                client,
+            target_file_path = os.path.join(temp_dir, file_name)
+            file = await client.download_media(
                 msg,
-                reply=edit,
-                download_folder=temp_dir,
-                progress_bar_function=lambda done, total: progress_callback(done, total, sender),
-                name=file_name
+                file_name=target_file_path,            
+                progress_args=("╔══━⚡️ Downloading ⚡️━══╗\n", edit, time.time()),
+                progress=progress_bar
             )
         except Exception as e:
             print(f"Download error: {e}")
@@ -1097,13 +1096,12 @@ async def copy_message_with_chat_id(app, userbot, sender, chat_id, message_id, e
                 except Exception:
                     pass
 
-            file = await fast_download(
-                userbot,
+            target_file_path = os.path.join(temp_dir, filename)
+            file = await userbot.download_media(
                 msg,
-                reply=edit,
-                download_folder=temp_dir,
-                progress_bar_function=lambda done, total: progress_callback(done, total, sender),
-                name=filename
+                file_name=target_file_path,
+                progress=progress_bar,
+                progress_args=("╭─────────────────────╮\n│      **__Downloading__...**\n├─────────────────────", edit, time.time())
             )
             if not file:
                 return False
@@ -1444,6 +1442,73 @@ def set_user_branding_tag(user_id, tag):
     """Save user's branding tag to MongoDB."""
     save_user_data(user_id, "branding_tag", tag)
 
+def get_user_custom_tags(user_id):
+    """Get user's list of custom branding tags from MongoDB."""
+    try:
+        user_data = collection.find_one({"_id": int(user_id)})
+        if not user_data:
+            user_data = collection.find_one({"_id": str(user_id)})
+        if user_data and "custom_tags" in user_data and user_data["custom_tags"]:
+            ctags = user_data["custom_tags"]
+            if isinstance(ctags, list):
+                return ctags
+            elif isinstance(ctags, str):
+                return [ctags]
+    except Exception as e:
+        print(f"Error getting custom tags: {e}")
+    return []
+
+def add_user_custom_tag(user_id, tag):
+    """Add a new custom tag to user's saved list in MongoDB (max 5)."""
+    try:
+        tags = get_user_custom_tags(user_id)
+        tag = tag.strip()
+        if not tag:
+            return False, "Tag cannot be empty!"
+        if tag in tags:
+            set_user_branding_tag(user_id, tag)
+            return True, "Tag is already saved and selected!"
+        if len(tags) >= 5:
+            return False, "You can save up to 5 custom tags only! Delete one first."
+        tags.append(tag)
+        collection.update_one(
+            {"_id": int(user_id)},
+            {"$set": {"custom_tags": tags}},
+            upsert=True
+        )
+        collection.update_one(
+            {"_id": str(user_id)},
+            {"$set": {"custom_tags": tags}}
+        )
+        set_user_branding_tag(user_id, tag)
+        return True, "Tag added successfully!"
+    except Exception as e:
+        print(f"Error adding custom tag: {e}")
+        return False, f"Error: {e}"
+
+def delete_user_custom_tag(user_id, tag_index):
+    """Delete a custom tag by index from user's saved list in MongoDB."""
+    try:
+        tags = get_user_custom_tags(user_id)
+        if 0 <= tag_index < len(tags):
+            deleted_tag = tags.pop(tag_index)
+            collection.update_one(
+                {"_id": int(user_id)},
+                {"$set": {"custom_tags": tags}}
+            )
+            collection.update_one(
+                {"_id": str(user_id)},
+                {"$set": {"custom_tags": tags}}
+            )
+            current_tag = get_user_branding_tag(user_id)
+            if current_tag == deleted_tag:
+                set_user_branding_tag(user_id, "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
+            return True, f"Tag '{deleted_tag}' deleted successfully!"
+        return False, "Invalid tag index."
+    except Exception as e:
+        print(f"Error deleting custom tag: {e}")
+        return False, f"Error: {e}"
+
 def get_user_caption_preference(user_id):
     try:
         user_data = collection.find_one({"_id": int(user_id)})
@@ -1521,6 +1586,46 @@ async def send_settings_message(chat_id, user_id):
 
 pending_photos = {}
 
+async def refresh_telethon_tag_page(event, user_id):
+    current_tag = get_user_branding_tag(user_id)
+    custom_tags = get_user_custom_tags(user_id)
+    tag_buttons = []
+    
+    # 1) Stolen Happiness Preset
+    is_sh_selected = (current_tag == "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
+    tag_buttons.append([Button.inline(f"🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ {'✅' if is_sh_selected else ''}", b'tag_stolenhappiness')])
+    
+    # 2) Custom saved tags (up to 5)
+    for i, tag in enumerate(custom_tags):
+        is_active = (current_tag == tag)
+        tag_buttons.append([
+            Button.inline(f"✨ {tag[:20]}... {'✅' if is_active else ''}" if len(tag) > 20 else f"✨ {tag} {'✅' if is_active else ''}", f"tag_select_{i}".encode()),
+            Button.inline("❌", f"tag_delete_{i}".encode())
+        ])
+        
+    # 3) Add new custom tag button if less than 5
+    if len(custom_tags) < 5:
+        tag_buttons.append([Button.inline("➕ Add Custom Tag", b'tag_custom')])
+        
+    # 4) Back button
+    tag_buttons.append([Button.inline("🔙 Back to Menu", b'back')])
+
+    preview_text = (
+        f"🏷️ **Branding Tag Settings**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"Current Tag: `{current_tag}`\n\n"
+        f"📝 **How it will look in your captions:**\n"
+        f"> 📁 **File:** `movie_title.mp4`\n"
+        f"> ───\n"
+        f"> **{current_tag}**\n\n"
+        f"This branding tag appears in the captions of your files and on PDF document pages. Select a preset or set a custom tag below:"
+    )
+
+    await event.edit(
+        preview_text,
+        buttons=tag_buttons
+    )
+
 @gf.on(events.CallbackQuery)
 async def callback_query_handler(event):
     user_id = event.sender_id
@@ -1540,62 +1645,37 @@ async def callback_query_handler(event):
         sessions[user_id] = 'setrename'
 
     elif data == 'settag':
-        current_tag = get_user_branding_tag(user_id)
-        tag_buttons = []
-        is_sh_selected = (current_tag == "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
-        tag_buttons.append([Button.inline(f"🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ {'✅' if is_sh_selected else ''}", b'tag_stolenhappiness')])
-        
-        if not is_sh_selected:
-            tag_buttons.append([Button.inline(f"✨ Custom: {current_tag} ✅", b'tag_custom_select')])
-            tag_buttons.append([Button.inline("✏️ Edit Custom Tag", b'tag_custom'), Button.inline("🗑️ Remove Custom Tag", b'tag_custom_remove')])
-        else:
-            tag_buttons.append([Button.inline("✏️ Set Custom Tag", b'tag_custom')])
-
-        await event.edit(
-            f"🏷️ **Select Your Branding Tag**\n\n"
-            f"Current: **{current_tag}**\n\n"
-            f"This tag appears in your captions and PDF files.",
-            buttons=tag_buttons
-        )
+        await refresh_telethon_tag_page(event, user_id)
 
     elif data == 'tag_stolenhappiness':
-        tag = BRANDING_TAGS["stolenhappiness"]
-        set_user_branding_tag(user_id, tag)
-        await event.answer("Branding tag set to Stolen Happiness")
-        # Refresh settag page
-        current_tag = get_user_branding_tag(user_id)
-        tag_buttons = []
-        tag_buttons.append([Button.inline("🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ ✅", b'tag_stolenhappiness')])
-        tag_buttons.append([Button.inline("✏️ Set Custom Tag", b'tag_custom')])
-        await event.edit(
-            f"🏷️ **Select Your Branding Tag**\n\n"
-            f"Current: **{current_tag}**\n\n"
-            f"This tag appears in your captions and PDF files.",
-            buttons=tag_buttons
-        )
-
-    elif data == 'tag_custom_remove':
-        tag = "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
-        set_user_branding_tag(user_id, tag)
-        await event.answer("Custom branding tag removed")
-        # Refresh settag page
-        current_tag = get_user_branding_tag(user_id)
-        tag_buttons = []
-        tag_buttons.append([Button.inline("🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ ✅", b'tag_stolenhappiness')])
-        tag_buttons.append([Button.inline("✏️ Set Custom Tag", b'tag_custom')])
-        await event.edit(
-            f"🏷️ **Select Your Branding Tag**\n\n"
-            f"Current: **{current_tag}**\n\n"
-            f"This tag appears in your captions and PDF files.",
-            buttons=tag_buttons
-        )
-
-    elif data == 'tag_custom_select':
-        await event.answer("Custom tag is already selected!")
+        set_user_branding_tag(user_id, "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
+        await event.answer("Branding tag set to Stolen Happiness Preset")
+        await refresh_telethon_tag_page(event, user_id)
 
     elif data == 'tag_custom':
-        await event.respond("✏️ Send your **custom branding tag** text:")
-        sessions[user_id] = 'setbrandingtag'
+        custom_tags = get_user_custom_tags(user_id)
+        if len(custom_tags) >= 5:
+            await event.answer("❌ You can save up to 5 custom tags only! Delete one first.", alert=True)
+        else:
+            await event.respond("✏️ Send your **custom branding tag** text:")
+            sessions[user_id] = 'setbrandingtag'
+
+    elif data.startswith('tag_select_'):
+        tag_index = int(data.split('_')[-1])
+        custom_tags = get_user_custom_tags(user_id)
+        if 0 <= tag_index < len(custom_tags):
+            tag = custom_tags[tag_index]
+            set_user_branding_tag(user_id, tag)
+            await event.answer(f"Selected: {tag}")
+            await refresh_telethon_tag_page(event, user_id)
+        else:
+            await event.answer("Invalid tag index")
+
+    elif data.startswith('tag_delete_'):
+        tag_index = int(data.split('_')[-1])
+        success, msg = delete_user_custom_tag(user_id, tag_index)
+        await event.answer(msg, alert=True)
+        await refresh_telethon_tag_page(event, user_id)
 
     elif data == 'setcaption':
         await event.respond("📝 Send the **caption format** (you can include variables like {filename}, {size}):")
@@ -1784,8 +1864,11 @@ async def handle_user_input(event):
         elif session_type == 'setbrandingtag':
             custom_tag = event.text.strip()
             if custom_tag:
-                set_user_branding_tag(user_id, custom_tag)
-                await event.respond(f"✅ Custom branding tag set to:\n\n**{custom_tag}**")
+                success, msg = add_user_custom_tag(user_id, custom_tag)
+                if success:
+                    await event.respond(f"✅ Tag added and selected:\n\n**{custom_tag}**")
+                else:
+                    await event.respond(f"❌ {msg}")
             else:
                 await event.respond("❌ Tag cannot be empty.")
 
