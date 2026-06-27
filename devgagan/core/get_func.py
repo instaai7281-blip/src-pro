@@ -62,11 +62,12 @@ def remove_chaudhary_fancy(text):
     normalized_text = "".join(unicodedata.normalize("NFKC", char) for char in text)
     
     unwanted_patterns = [
-        r'chaudhary',
-        r'PahadiXBabhan',
-        r'LUCIFER',
-        r'Babhan',
-        r'Pahadi',
+        r'chaudhary\s*[^\w\s]*',
+        r'PahadiXBabhan\s*[^\w\s]*',
+        r'LUCIFER\s*[^\w\s]*',
+        r'Babhan\s*[^\w\s]*',
+        r'Pahadi\s*[^\w\s]*',
+        r'insaan\s*[^\w\s]*',
     ]
     
     match_indices = set()
@@ -1328,19 +1329,46 @@ def format_caption(original_caption, sender, custom_caption, filename=None):
         lines = original_caption.split('\n')
         new_lines = []
         has_title = False
+        
+        # Check if any line has Title: or File title:
         for line in lines:
-            stripped = line.strip()
+            stripped = line.strip().replace('*', '').replace('_', '').replace('`', '').strip()
             if re.match(r'(?i)^(title|file title)\s*:', stripped):
                 has_title = True
-                new_lines.append(f"> {line}")
-            else:
-                new_lines.append(line)
+                break
         
         if has_title:
+            for line in lines:
+                stripped = line.strip().replace('*', '').replace('_', '').replace('`', '').strip()
+                if re.match(r'(?i)^(title|file title)\s*:', stripped):
+                    new_lines.append(f"> {line}")
+                else:
+                    new_lines.append(line)
             formatted_orig = '\n'.join(new_lines)
             return f"{formatted_orig}\n\n> **{branding_tag}**"
         else:
-            return f"> {original_caption}\n\n> **{branding_tag}**"
+            # If no title, check if first line starts with Index:
+            first_line_stripped = lines[0].strip().replace('*', '').replace('_', '').replace('`', '').strip() if lines else ""
+            if re.match(r'(?i)^index\s*:', first_line_stripped):
+                # Do not blockquote first line, but blockquote the rest of the lines
+                new_lines.append(lines[0])
+                for line in lines[1:]:
+                    if line.strip():
+                        new_lines.append(f"> {line}")
+                    else:
+                        new_lines.append(line)
+                formatted_orig = '\n'.join(new_lines)
+                return f"{formatted_orig}\n\n> **{branding_tag}**"
+            else:
+                # If no Title and no Index, blockquote the whole caption line by line
+                blockquote_lines = []
+                for line in lines:
+                    if line.strip():
+                        blockquote_lines.append(f"> {line}")
+                    else:
+                        blockquote_lines.append(line)
+                formatted_orig = '\n'.join(blockquote_lines)
+                return f"{formatted_orig}\n\n> **{branding_tag}**"
     elif filename:
         return f"> **{filename}**\n\n> **{branding_tag}**"
     else:
