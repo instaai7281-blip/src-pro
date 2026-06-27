@@ -60,23 +60,35 @@ def remove_chaudhary_fancy(text):
         current_norm_idx += len(norm_char)
         
     normalized_text = "".join(unicodedata.normalize("NFKC", char) for char in text)
-    matches = list(re.finditer(r'(?i)chaudhary', normalized_text))
-    if not matches:
-        return text
-        
+    
+    unwanted_patterns = [
+        r'chaudhary',
+        r'PahadiXBabhan',
+        r'LUCIFER',
+        r'Babhan',
+        r'Pahadi',
+    ]
+    
     match_indices = set()
-    for match in matches:
-        for idx in range(match.start(), match.end()):
-            match_indices.add(idx)
+    for pattern in unwanted_patterns:
+        matches = list(re.finditer(f'(?i){pattern}', normalized_text))
+        for match in matches:
+            for idx in range(match.start(), match.end()):
+                match_indices.add(idx)
             
     cleaned_chars = []
     for i, char in enumerate(text):
+        codepoint = ord(char)
+        if 0x13000 <= codepoint <= 0x1342F or char in ('𓆩', '𓆪', '𓃮'):
+            continue
+            
         start_norm, end_norm = orig_indices[i]
         if any(idx in match_indices for idx in range(start_norm, end_norm)):
             continue
         cleaned_chars.append(char)
         
     result = "".join(cleaned_chars)
+    result = re.sub(r'^[ \t\-_]+|[ \t\-_]+$', '', result)
     result = re.sub(r'[ \t]+', ' ', result)
     return result.strip()
 
