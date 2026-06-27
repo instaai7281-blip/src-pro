@@ -111,12 +111,12 @@ async def token_handler(client, message):
     user_id = message.chat.id
 
     if len(message.command) <= 1:
-        image_url = "https://freeimage.host/i/F5dGOsj"  # must end with .jpg/.png etc.
+        image_url = "https://freeimage.host/i/F5dGOsj"
         join_button = InlineKeyboardButton("✈️ Main Channel", url="https://t.me/stolen_happines")
-        premium = InlineKeyboardButton("🦋 Contact Owner", url="https://t.me/Chosen_One_x_bot")
+        premium_contact = InlineKeyboardButton("👑 𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘 ⚝", url="https://t.me/CHOSEN_ONEx_bot")
         keyboard = InlineKeyboardMarkup([
             [join_button],
-            [premium]
+            [premium_contact]
         ])
 
         # Mention the user in the caption
@@ -134,10 +134,8 @@ async def token_handler(client, message):
                 "🔐 **Private channel post?**\n\n"                
                 "➤ First do /login to save posts from Private Channel\n\n"
                 "💡 Need help? Send /guide\n For More Features Use /settings 😉 \n\n"
-               
             ),
-           # reply_markup=keyboard,  # ✅ fixed here
-
+            reply_markup=keyboard,
         )
         return
  

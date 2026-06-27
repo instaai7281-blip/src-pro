@@ -82,13 +82,22 @@ def get_cleaning_keyboard(user_data):
     return InlineKeyboardMarkup(buttons)
 
 def get_tag_keyboard(user_data):
-    current_tag = user_data.get("branding_tag", "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗")
-    buttons = [
-        [InlineKeyboardButton(f"⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗 {'✅' if 'Just' in current_tag or '𝗝𝘂𝘀𝘁' in current_tag else ''}", callback_data="set_tag_justforyou")],
-        [InlineKeyboardButton(f"🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ {'✅' if 'Sᴛꪮʟᴇɴ' in current_tag else ''}", callback_data="set_tag_stolenhappiness")],
-        [InlineKeyboardButton("✏️ Custom Tag (Type your own)", callback_data="set_tag_custom")],
-        [InlineKeyboardButton("🔙 Back to Menu", callback_data="back_to_main")]
-    ]
+    current_tag = user_data.get("branding_tag", "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
+    buttons = []
+    
+    is_sh_selected = (current_tag == "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
+    buttons.append([InlineKeyboardButton(f"🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ {'✅' if is_sh_selected else ''}", callback_data="set_tag_stolenhappiness")])
+    
+    if not is_sh_selected:
+        buttons.append([InlineKeyboardButton(f"✨ Custom: {current_tag} ✅", callback_data="set_tag_custom_select")])
+        buttons.append([
+            InlineKeyboardButton("✏️ Edit Custom Tag", callback_data="set_tag_custom"),
+            InlineKeyboardButton("🗑️ Remove Custom Tag", callback_data="set_tag_custom_remove")
+        ])
+    else:
+        buttons.append([InlineKeyboardButton("✏️ Set Custom Tag", callback_data="set_tag_custom")])
+        
+    buttons.append([InlineKeyboardButton("🔙 Back to Menu", callback_data="back_to_main")])
     return InlineKeyboardMarkup(buttons)
 
 # ────── Command Handler ──────
@@ -319,21 +328,24 @@ async def cleaning_actions_callback(client, callback_query: CallbackQuery):
 
 # ────── Branding Tag Actions ──────
 
-@app.on_callback_query(filters.regex(r"^(set_tag_justforyou|set_tag_stolenhappiness|set_tag_custom)$"))
+@app.on_callback_query(filters.regex(r"^(set_tag_stolenhappiness|set_tag_custom|set_tag_custom_remove|set_tag_custom_select)$"))
 async def tag_actions_callback(client, callback_query: CallbackQuery):
     data = callback_query.data
     user_id = callback_query.from_user.id
 
-    if data == "set_tag_justforyou":
-        tag = "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗"
-        await db.update_data(user_id, {"branding_tag": tag})
-        await callback_query.answer("Branding tag set to Just For You...💗")
-        
-    elif data == "set_tag_stolenhappiness":
+    if data == "set_tag_stolenhappiness":
         tag = "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
         await db.update_data(user_id, {"branding_tag": tag})
         await callback_query.answer("Branding tag set to Stolen Happiness")
         
+    elif data == "set_tag_custom_remove":
+        tag = "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
+        await db.update_data(user_id, {"branding_tag": tag})
+        await callback_query.answer("Custom branding tag removed")
+
+    elif data == "set_tag_custom_select":
+        await callback_query.answer("Custom tag is already active!")
+
     elif data == "set_tag_custom":
         await callback_query.message.delete()
         ask = await client.ask(user_id, "🏷️ **Send your custom branding tag now.**\n\n> Send /cancel to abort.")
@@ -350,7 +362,7 @@ async def tag_actions_callback(client, callback_query: CallbackQuery):
 
     # Refresh page
     user_data = await db.get_data(user_id) or {}
-    current_tag = user_data.get("branding_tag", "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗")
+    current_tag = user_data.get("branding_tag", "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
     await callback_query.message.edit_text(
         f"🏷️ **Branding Tag Settings**\n\n"
         f"**Current Branding Tag:**\n`{current_tag}`\n\n"

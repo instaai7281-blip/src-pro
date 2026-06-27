@@ -20,7 +20,7 @@ import asyncio
 from pyrogram import filters, Client
 from devgagan import app, task_semaphore
 from config import API_ID, API_HASH, FREEMIUM_LIMIT, PREMIUM_LIMIT, OWNER_ID
-from devgagan.core.get_func import get_msg, save_user_data, load_user_data
+from devgagan.core.get_func import get_msg, save_user_data, load_user_data, get_target_chat_id
 from devgagan.core.func import *
 from devgagan.core.mongo import db
 from pyrogram.errors import FloodWait
@@ -440,6 +440,23 @@ async def execute_batch(user_id, base_url, cs, cl, is_tg_openmessage, freecheck)
             reply_markup=InlineKeyboardMarkup([[join_button]])
         )
         await app.send_message(user_id, f"Batch process {final_status}! ✨\nSuccess: {success_count} | Failed: {fail_count}")
+        
+        if final_status == "completed":
+            target_chat_id = get_target_chat_id(user_id)
+            if target_chat_id and target_chat_id != user_id:
+                chat_id = target_chat_id
+                topic_id = None
+                if isinstance(chat_id, str) and '/' in chat_id:
+                    try:
+                        parts = chat_id.split('/', 1)
+                        chat_id = int(parts[0])
+                        topic_id = int(parts[1])
+                    except Exception:
+                        pass
+                try:
+                    await app.send_message(chat_id, "> **✅ 𝗖ꪮ𝗺𝗽𝗹𝗲𝘁𝗲 𝗛ꪮ 𝗚𝗮𝘆𝗮 𝗕ꪮ$$ 😎**", reply_to_message_id=topic_id)
+                except Exception as e:
+                    print(f"Failed to send complete message to target chat: {e}")
 
     except Exception as e:
         await app.send_message(user_id, f"Critical Error: {e}")

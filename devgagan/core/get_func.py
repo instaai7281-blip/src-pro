@@ -680,7 +680,7 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
             return
 
         if msg.sticker:
-            await handle_sticker(app, msg, target_chat_id, topic_id, edit_id, LOG_GROUP)
+            await handle_sticker(app, msg, target_chat_id, topic_id, edit_id, LOG_GROUP, sender=sender)
             return
 
         
@@ -695,13 +695,21 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
             # unique directory for each user to prevent concurrency collisions
             temp_dir = os.path.join("downloads", str(sender))
             os.makedirs(temp_dir, exist_ok=True)
-            target_file_path = os.path.join(temp_dir, file_name)
             
-            file = await client.download_media(
+            # Join the chat first to resolve username entity and prevent PeerIdInvalid / ChannelPrivate errors
+            if client and client != app and isinstance(chat, str) and not chat.startswith("-") and not chat.isdigit():
+                try:
+                    await client.join_chat(chat)
+                except Exception:
+                    pass
+            
+            file = await fast_download(
+                client,
                 msg,
-                file_name=target_file_path,            
-                progress_args=("╔══━⚡️ Downloading ⚡️━══╗\n", edit, time.time()),
-                progress=progress_bar
+                reply=edit,
+                download_folder=temp_dir,
+                progress_bar_function=lambda done, total: progress_callback(done, total, sender),
+                name=file_name
             )
         except Exception as e:
             print(f"Download error: {e}")
@@ -808,7 +816,7 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
 async def clone_message(app, msg, target_chat_id, topic_id, edit_id, log_group, sender=None):
     edit = None
     try:
-        edit = await app.edit_message_text(target_chat_id, edit_id, "Cloning...")
+        edit = await app.edit_message_text(sender or target_chat_id, edit_id, "Cloning...")
     except Exception:
         try:
             edit = await app.edit_message_text(msg.chat.id, edit_id, "Cloning...")
@@ -829,7 +837,7 @@ async def clone_message(app, msg, target_chat_id, topic_id, edit_id, log_group, 
 async def clone_text_message(app, msg, target_chat_id, topic_id, edit_id, log_group, sender=None):
     edit = None
     try:
-        edit = await app.edit_message_text(target_chat_id, edit_id, "Cloning text message...")
+        edit = await app.edit_message_text(sender or target_chat_id, edit_id, "Cloning text message...")
     except Exception:
         try:
             edit = await app.edit_message_text(msg.chat.id, edit_id, "Cloning text message...")
@@ -848,10 +856,10 @@ async def clone_text_message(app, msg, target_chat_id, topic_id, edit_id, log_gr
             pass
 
 
-async def handle_sticker(app, msg, target_chat_id, topic_id, edit_id, log_group):
+async def handle_sticker(app, msg, target_chat_id, topic_id, edit_id, log_group, sender=None):
     edit = None
     try:
-        edit = await app.edit_message_text(target_chat_id, edit_id, "Handling sticker...")
+        edit = await app.edit_message_text(sender or target_chat_id, edit_id, "Handling sticker...")
     except Exception:
         try:
             edit = await app.edit_message_text(msg.chat.id, edit_id, "Handling sticker...")
@@ -1081,13 +1089,21 @@ async def copy_message_with_chat_id(app, userbot, sender, chat_id, message_id, e
             # unique directory for each user to prevent concurrency collisions
             temp_dir = os.path.join("downloads", str(sender))
             os.makedirs(temp_dir, exist_ok=True)
-            target_file_path = os.path.join(temp_dir, filename)
 
-            file = await userbot.download_media(
+            # Join the chat first to resolve username entity and prevent PeerIdInvalid / ChannelPrivate errors
+            if userbot and isinstance(resolved_chat_id, str) and not resolved_chat_id.startswith("-") and not resolved_chat_id.isdigit():
+                try:
+                    await userbot.join_chat(resolved_chat_id)
+                except Exception:
+                    pass
+
+            file = await fast_download(
+                userbot,
                 msg,
-                file_name=target_file_path,
-                progress=progress_bar,
-                progress_args=("╭─────────────────────╮\n│      **__Downloading__...**\n├─────────────────────", edit, time.time())
+                reply=edit,
+                download_folder=temp_dir,
+                progress_bar_function=lambda done, total: progress_callback(done, total, sender),
+                name=filename
             )
             if not file:
                 return False
@@ -1408,10 +1424,9 @@ get_user_rename_preference = lambda user_id: user_rename_preferences.get(str(use
 
 # --- Branding Tag Selection ---
 BRANDING_TAGS = {
-    "justforyou": "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗",
     "stolenhappiness": "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝",
 }
-DEFAULT_BRANDING_TAG = "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗"
+DEFAULT_BRANDING_TAG = "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
 
 def get_user_branding_tag(user_id):
     """Get user's selected branding tag from MongoDB."""
@@ -1526,11 +1541,16 @@ async def callback_query_handler(event):
 
     elif data == 'settag':
         current_tag = get_user_branding_tag(user_id)
-        tag_buttons = [
-            [Button.inline(f"⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗 {'✅' if 'Just' in current_tag or '𝗝𝘂𝘀𝘁' in current_tag else ''}", b'tag_justforyou')],
-            [Button.inline(f"🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ {'✅' if 'Sᴛꪮʟᴇɴ' in current_tag else ''}", b'tag_stolenhappiness')],
-            [Button.inline("✏️ Custom Tag (Type your own)", b'tag_custom')],
-        ]
+        tag_buttons = []
+        is_sh_selected = (current_tag == "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
+        tag_buttons.append([Button.inline(f"🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ {'✅' if is_sh_selected else ''}", b'tag_stolenhappiness')])
+        
+        if not is_sh_selected:
+            tag_buttons.append([Button.inline(f"✨ Custom: {current_tag} ✅", b'tag_custom_select')])
+            tag_buttons.append([Button.inline("✏️ Edit Custom Tag", b'tag_custom'), Button.inline("🗑️ Remove Custom Tag", b'tag_custom_remove')])
+        else:
+            tag_buttons.append([Button.inline("✏️ Set Custom Tag", b'tag_custom')])
+
         await event.edit(
             f"🏷️ **Select Your Branding Tag**\n\n"
             f"Current: **{current_tag}**\n\n"
@@ -1538,15 +1558,40 @@ async def callback_query_handler(event):
             buttons=tag_buttons
         )
 
-    elif data == 'tag_justforyou':
-        tag = BRANDING_TAGS["justforyou"]
-        set_user_branding_tag(user_id, tag)
-        await event.edit(f"✅ Branding tag set to:\n\n**{tag}**")
-
     elif data == 'tag_stolenhappiness':
         tag = BRANDING_TAGS["stolenhappiness"]
         set_user_branding_tag(user_id, tag)
-        await event.edit(f"✅ Branding tag set to:\n\n**{tag}**")
+        await event.answer("Branding tag set to Stolen Happiness")
+        # Refresh settag page
+        current_tag = get_user_branding_tag(user_id)
+        tag_buttons = []
+        tag_buttons.append([Button.inline("🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ ✅", b'tag_stolenhappiness')])
+        tag_buttons.append([Button.inline("✏️ Set Custom Tag", b'tag_custom')])
+        await event.edit(
+            f"🏷️ **Select Your Branding Tag**\n\n"
+            f"Current: **{current_tag}**\n\n"
+            f"This tag appears in your captions and PDF files.",
+            buttons=tag_buttons
+        )
+
+    elif data == 'tag_custom_remove':
+        tag = "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
+        set_user_branding_tag(user_id, tag)
+        await event.answer("Custom branding tag removed")
+        # Refresh settag page
+        current_tag = get_user_branding_tag(user_id)
+        tag_buttons = []
+        tag_buttons.append([Button.inline("🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ ✅", b'tag_stolenhappiness')])
+        tag_buttons.append([Button.inline("✏️ Set Custom Tag", b'tag_custom')])
+        await event.edit(
+            f"🏷️ **Select Your Branding Tag**\n\n"
+            f"Current: **{current_tag}**\n\n"
+            f"This tag appears in your captions and PDF files.",
+            buttons=tag_buttons
+        )
+
+    elif data == 'tag_custom_select':
+        await event.answer("Custom tag is already selected!")
 
     elif data == 'tag_custom':
         await event.respond("✏️ Send your **custom branding tag** text:")
@@ -2038,7 +2083,7 @@ def progress_callback(done, total, user_id):
     # Format the final output as needed
     final = (
         f"╭──────────────────╮\n"
-        f"│     **__⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗 ⚡ Uploader__**       \n"
+        f"│     **__🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝ ⚡ Uploader__**       \n"
         f"├──────────\n"
         f"│ {progress_bar}\n\n"
         f"│ **__Progress:__** {percent:.2f}%\n"
