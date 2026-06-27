@@ -1309,9 +1309,24 @@ def format_caption(original_caption, sender, custom_caption, filename=None):
         original_caption = apply_custom_caption_placeholders(custom_caption, original_caption, filename)
         return original_caption
 
-    # Build final blockquote caption: filename on top, branding tag below
+    # Build final blockquote caption
     if original_caption:
-        return f"> {original_caption}\n\n> **{branding_tag}**"
+        lines = original_caption.split('\n')
+        new_lines = []
+        has_title = False
+        for line in lines:
+            stripped = line.strip()
+            if re.match(r'(?i)^(title|file title)\s*:', stripped):
+                has_title = True
+                new_lines.append(f"> {line}")
+            else:
+                new_lines.append(line)
+        
+        if has_title:
+            formatted_orig = '\n'.join(new_lines)
+            return f"{formatted_orig}\n\n> **{branding_tag}**"
+        else:
+            return f"> {original_caption}\n\n> **{branding_tag}**"
     elif filename:
         return f"> **{filename}**\n\n> **{branding_tag}**"
     else:
