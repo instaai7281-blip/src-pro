@@ -109,6 +109,11 @@ async def token_handler(client, message):
     #     return
 
     user_id = message.chat.id
+    try:
+        from devgagan.core.mongo.users_db import add_user
+        await add_user(user_id)
+    except Exception as e:
+        print(f"Error adding user in start command: {e}")
 
     if len(message.command) <= 1:
         image_url = "https://freeimage.host/i/F5dGOsj"

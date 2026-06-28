@@ -251,6 +251,42 @@ async def handler(event):
     finally:
          
         ongoing_downloads.pop(user_id, None)
+
+
+@client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
+async def direct_link_downloader(event):
+    import re
+    user_id = event.sender_id
+    text = event.message.text
+    if not text:
+        return
+    
+    if text.startswith('/'):
+        return
+        
+    match = re.search(r'(https?://[^\s]+)', text)
+    if not match:
+        return
+        
+    url = match.group(1)
+    is_yt = "youtube.com" in url or "youtu.be" in url
+    is_insta = "instagram.com" in url
+    
+    if is_yt or is_insta:
+        if user_id in ongoing_downloads:
+            await event.reply("**You already have an ongoing ytdlp download. Please wait until it completes!**")
+            return
+            
+        ongoing_downloads[user_id] = True
+        try:
+            if is_insta:
+                await process_video(client, event, url, "INSTA_COOKIES", check_duration_and_size=False)
+            elif is_yt:
+                await process_video(client, event, url, "YT_COOKIES", check_duration_and_size=True)
+        except Exception as e:
+            await event.reply(f"**An error occurred:** `{e}`")
+        finally:
+            ongoing_downloads.pop(user_id, None)
  
  
  

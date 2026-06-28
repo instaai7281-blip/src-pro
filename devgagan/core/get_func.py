@@ -52,14 +52,29 @@ def remove_chaudhary_fancy(text):
     if not text:
         return text
     
+    translation_map = {
+        # Small Caps
+        'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ғ': 'f', 'ɢ': 'g', 'ʜ': 'h', 
+        'ɪ': 'i', 'ᴊ': 'j', 'ᴋ': 'k', 'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n', 'ᴏ': 'o', 'ᴘ': 'p', 
+        'ǫ': 'q', 'ʀ': 'r', 's': 's', 'ᴛ': 't', 'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w', 'x': 'x', 
+        'ʏ': 'y', 'ᴢ': 'z',
+        # Lao / Tai Viet / other mimics
+        'ꫝ': 'h', 'ຮ': 's', 'ꪮ': 'o', 'ꪎ': 'x', 'ꪗ': 'y',
+    }
+    
+    # Pre-translate text for matching
+    translated_chars = []
     orig_indices = []
-    current_norm_idx = 0
+    current_idx = 0
     for char in text:
         norm_char = unicodedata.normalize("NFKC", char)
-        orig_indices.append((current_norm_idx, current_norm_idx + len(norm_char)))
-        current_norm_idx += len(norm_char)
+        translated_char = "".join(translation_map.get(c, c) for c in norm_char)
         
-    normalized_text = "".join(unicodedata.normalize("NFKC", char) for char in text)
+        orig_indices.append((current_idx, current_idx + len(translated_char)))
+        current_idx += len(translated_char)
+        translated_chars.append(translated_char)
+        
+    normalized_text = "".join(translated_chars)
     
     unwanted_patterns = [
         r'chaudhary\s*[^\w\s]*',
@@ -68,6 +83,8 @@ def remove_chaudhary_fancy(text):
         r'Babhan\s*[^\w\s]*',
         r'Pahadi\s*[^\w\s]*',
         r'insaan\s*[^\w\s]*',
+        r'team\s*hs\s*[^\w\s]*',
+        r'team\s*hs\s*亗?',
     ]
     
     match_indices = set()
@@ -1334,48 +1351,13 @@ def format_caption(original_caption, sender, custom_caption, filename=None):
     # Build final blockquote caption
     if original_caption:
         lines = original_caption.split('\n')
-        new_lines = []
-        has_title = False
-        
-        # Check if any line has Title: or File title:
-        for line in lines:
-            stripped = line.strip().replace('*', '').replace('_', '').replace('`', '').strip()
-            if re.match(r'(?i)^(title|file title)\s*:', stripped):
-                has_title = True
-                break
-        
-        if has_title:
-            for line in lines:
-                stripped = line.strip().replace('*', '').replace('_', '').replace('`', '').strip()
-                if re.match(r'(?i)^(title|file title)\s*:', stripped):
-                    new_lines.append(f"> {line}")
-                else:
-                    new_lines.append(line)
-            formatted_orig = '\n'.join(new_lines)
-            return f"{formatted_orig}\n\n> **{branding_tag}**"
-        else:
-            # If no title, check if first line starts with Index:
-            first_line_stripped = lines[0].strip().replace('*', '').replace('_', '').replace('`', '').strip() if lines else ""
-            if re.match(r'(?i)^index\s*:', first_line_stripped):
-                # Do not blockquote first line, but blockquote the rest of the lines
-                new_lines.append(lines[0])
-                for line in lines[1:]:
-                    if line.strip():
-                        new_lines.append(f"> {line}")
-                    else:
-                        new_lines.append(line)
-                formatted_orig = '\n'.join(new_lines)
-                return f"{formatted_orig}\n\n> **{branding_tag}**"
-            else:
-                # If no Title and no Index, blockquote the whole caption line by line
-                blockquote_lines = []
-                for line in lines:
-                    if line.strip():
-                        blockquote_lines.append(f"> {line}")
-                    else:
-                        blockquote_lines.append(line)
-                formatted_orig = '\n'.join(blockquote_lines)
-                return f"{formatted_orig}\n\n> **{branding_tag}**"
+        if lines:
+            first_line = lines[0]
+            # Strip leading '>' or '> ' if present
+            if first_line.strip().startswith('>'):
+                lines[0] = first_line.strip().lstrip('>').strip()
+        formatted_orig = '\n'.join(lines)
+        return f"{formatted_orig}\n\n> **{branding_tag}**"
     elif filename:
         return f"> **{filename}**\n\n> **{branding_tag}**"
     else:
