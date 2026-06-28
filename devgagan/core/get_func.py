@@ -1024,7 +1024,8 @@ async def copy_message_with_chat_id(app, userbot, sender, chat_id, message_id, e
         if msg.document and ((msg.document.file_name and msg.document.file_name.lower().endswith('.pdf')) or msg.document.mime_type == 'application/pdf') and not msg.caption:
             orig_filename = msg.document.file_name or "document.pdf"
             # Aggressively clean up original filename to remove others' tags
-            clean_filename_base = re.sub(r'@\w+', '', orig_filename)
+            clean_filename_base = remove_chaudhary_fancy(orig_filename)
+            clean_filename_base = re.sub(r'@\w+', '', clean_filename_base)
             clean_filename_base = re.sub(r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*', '', clean_filename_base)
             clean_filename_base = re.sub(r'(?i)[*_]*team[\s_\-\.]*spay[*_]*', '', clean_filename_base)
             clean_filename_base = re.sub(r'(?i)[*_]*let\'?s\s*help[*_]*', '', clean_filename_base)
@@ -1177,7 +1178,8 @@ async def send_media_message(app, target_chat_id, msg, caption, topic_id, sender
         if msg.document and ((msg.document.file_name and msg.document.file_name.lower().endswith('.pdf')) or msg.document.mime_type == 'application/pdf') and not msg.caption:
             orig_filename = msg.document.file_name or "document.pdf"
             # Aggressively clean up original filename to remove others' tags
-            clean_filename_base = re.sub(r'@\w+', '', orig_filename)
+            clean_filename_base = remove_chaudhary_fancy(orig_filename)
+            clean_filename_base = re.sub(r'@\w+', '', clean_filename_base)
             clean_filename_base = re.sub(r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*', '', clean_filename_base)
             clean_filename_base = re.sub(r'(?i)[*_]*team[\s_\-\.]*spay[*_]*', '', clean_filename_base)
             clean_filename_base = re.sub(r'(?i)[*_]*let\'?s\s*help[*_]*', '', clean_filename_base)
@@ -1198,7 +1200,8 @@ async def send_media_message(app, target_chat_id, msg, caption, topic_id, sender
             )
         elif file_name:
             # If no caption → use only file name
-            caption = f"🗃 {file_name}"
+            cleaned_file_name = remove_chaudhary_fancy(file_name)
+            caption = f"🗃 {cleaned_file_name}"
         else:
             # If nothing → fallback
             caption = f"> **{DEFAULT_BRANDING_TAG}**"
