@@ -85,6 +85,7 @@ def remove_chaudhary_fancy(text):
         r'insaan[^a-zA-Z0-9\s]*',
         r'team\s*hs[^a-zA-Z0-9\s]*',
         r'team\s*hs\s*亗?',
+        r'(?:extracted|downloaded|download|uploaded|upload|forwarded)[\s_]*by\s*[:\-➤>–\-]*\s*[^\n]*',
     ]
     
     match_indices = set()
