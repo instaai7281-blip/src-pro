@@ -56,7 +56,7 @@ def remove_chaudhary_fancy(text):
         # Small Caps
         'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ғ': 'f', 'ɢ': 'g', 'ʜ': 'h', 
         'ɪ': 'i', 'ᴊ': 'j', 'ᴋ': 'k', 'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n', 'ᴏ': 'o', 'ᴘ': 'p', 
-        'ǫ': 'q', 'ʀ': 'r', 's': 's', 'ᴛ': 't', 'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w', 'x': 'x', 
+        'ǫ': 'q', 'ʀ': 'r', 'ꜱ': 's', 'ᴛ': 't', 'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w', 'x': 'x', 
         'ʏ': 'y', 'ᴢ': 'z',
         # Lao / Tai Viet / other mimics
         'ꫝ': 'h', 'ຮ': 's', 'ꪮ': 'o', 'ꪎ': 'x', 'ꪗ': 'y',
@@ -77,13 +77,13 @@ def remove_chaudhary_fancy(text):
     normalized_text = "".join(translated_chars)
     
     unwanted_patterns = [
-        r'chaudhary\s*[^\w\s]*',
-        r'PahadiXBabhan\s*[^\w\s]*',
-        r'LUCIFER\s*[^\w\s]*',
-        r'Babhan\s*[^\w\s]*',
-        r'Pahadi\s*[^\w\s]*',
-        r'insaan\s*[^\w\s]*',
-        r'team\s*hs\s*[^\w\s]*',
+        r'chaudhary[^a-zA-Z0-9\s]*',
+        r'PahadiXBabhan[^a-zA-Z0-9\s]*',
+        r'LUCIFER[^a-zA-Z0-9\s]*',
+        r'Babhan[^a-zA-Z0-9\s]*',
+        r'Pahadi[^a-zA-Z0-9\s]*',
+        r'insaan[^a-zA-Z0-9\s]*',
+        r'team\s*hs[^a-zA-Z0-9\s]*',
         r'team\s*hs\s*亗?',
     ]
     
