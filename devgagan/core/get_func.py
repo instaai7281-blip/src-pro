@@ -1350,14 +1350,7 @@ def format_caption(original_caption, sender, custom_caption, filename=None):
 
     # Build final blockquote caption
     if original_caption:
-        lines = original_caption.split('\n')
-        if lines:
-            first_line = lines[0]
-            # Strip leading '>' or '> ' if present
-            if first_line.strip().startswith('>'):
-                lines[0] = first_line.strip().lstrip('>').strip()
-        formatted_orig = '\n'.join(lines)
-        return f"{formatted_orig}\n\n> **{branding_tag}**"
+        return f"{original_caption}\n\n> **{branding_tag}**"
     elif filename:
         return f"> **{filename}**\n\n> **{branding_tag}**"
     else:
