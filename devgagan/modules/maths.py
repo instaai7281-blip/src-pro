@@ -1,6 +1,7 @@
 import asyncio
-from devgagan import sex
-from telethon import events, functions
+from pyrogram import filters
+from devgagan import app, sex
+from telethon import functions
 from telethon.tl.types import InputRichMessageMarkdown
 
 SIGNATURE = "\n\n---\n🛡️ **Owner:** [𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘 ⚝](https://t.me/CHOSEN_ONEx_bot)"
@@ -234,84 +235,112 @@ CHART_TEXT = r"""
 
 > **Tip:** Memorizing this chart or writing it down quickly in exams will save you valuable time!""" + SIGNATURE
 
-@sex.on(events.NewMessage(pattern=r"^/(math|maths)$"))
-async def maths_menu_handler(e):
-    chat = await e.get_input_chat()
-    await sex(functions.messages.SendMessageRequest(
-        peer=chat,
-        message="Study Reference Menu",
-        rich_message=InputRichMessageMarkdown(markdown=START_TEXT),
-    ))
+@app.on_message(filters.command(["math", "maths"]))
+async def maths_menu_handler(client, message):
+    chat_id = message.chat.id
+    try:
+        await sex(functions.messages.SendMessageRequest(
+            peer=chat_id,
+            message="Study Reference Menu",
+            rich_message=InputRichMessageMarkdown(markdown=START_TEXT),
+        ))
+    except Exception as ex:
+        print(f"Error in maths_menu_handler: {ex}")
 
-@sex.on(events.NewMessage(pattern=r"^/algebra$"))
-async def algebra_handler(e):
-    chat = await e.get_input_chat()
-    await sex(functions.messages.SendMessageRequest(
-        peer=chat,
-        message="Mathematics Formulas",
-        rich_message=InputRichMessageMarkdown(markdown=MATH_TEXT),
-    ))
+@app.on_message(filters.command("algebra"))
+async def algebra_handler(client, message):
+    chat_id = message.chat.id
+    try:
+        await sex(functions.messages.SendMessageRequest(
+            peer=chat_id,
+            message="Mathematics Formulas",
+            rich_message=InputRichMessageMarkdown(markdown=MATH_TEXT),
+        ))
+    except Exception as ex:
+        print(f"Error in algebra_handler: {ex}")
 
-@sex.on(events.NewMessage(pattern=r"^/arithmetic$"))
-async def arithmetic_handler(e):
-    chat = await e.get_input_chat()
-    await sex(functions.messages.SendMessageRequest(
-        peer=chat,
-        message="Arithmetic Formulas",
-        rich_message=InputRichMessageMarkdown(markdown=ARITHMETIC_TEXT),
-    ))
+@app.on_message(filters.command("arithmetic"))
+async def arithmetic_handler(client, message):
+    chat_id = message.chat.id
+    try:
+        await sex(functions.messages.SendMessageRequest(
+            peer=chat_id,
+            message="Arithmetic Formulas",
+            rich_message=InputRichMessageMarkdown(markdown=ARITHMETIC_TEXT),
+        ))
+    except Exception as ex:
+        print(f"Error in arithmetic_handler: {ex}")
 
-@sex.on(events.NewMessage(pattern=r"^/geometry$"))
-async def geometry_handler(e):
-    chat = await e.get_input_chat()
-    await sex(functions.messages.SendMessageRequest(
-        peer=chat,
-        message="Geometry Formulas",
-        rich_message=InputRichMessageMarkdown(markdown=GEOMETRY_TEXT),
-    ))
+@app.on_message(filters.command("geometry"))
+async def geometry_handler(client, message):
+    chat_id = message.chat.id
+    try:
+        await sex(functions.messages.SendMessageRequest(
+            peer=chat_id,
+            message="Geometry Formulas",
+            rich_message=InputRichMessageMarkdown(markdown=GEOMETRY_TEXT),
+        ))
+    except Exception as ex:
+        print(f"Error in geometry_handler: {ex}")
 
-@sex.on(events.NewMessage(pattern=r"^/cheatsheet$"))
-async def cheatsheet_handler(e):
-    chat = await e.get_input_chat()
-    await sex(functions.messages.SendMessageRequest(
-        peer=chat,
-        message="Cheat Sheet",
-        rich_message=InputRichMessageMarkdown(markdown=CHEATSHEET_TEXT),
-    ))
+@app.on_message(filters.command("cheatsheet"))
+async def cheatsheet_handler(client, message):
+    chat_id = message.chat.id
+    try:
+        await sex(functions.messages.SendMessageRequest(
+            peer=chat_id,
+            message="Cheat Sheet",
+            rich_message=InputRichMessageMarkdown(markdown=CHEATSHEET_TEXT),
+        ))
+    except Exception as ex:
+        print(f"Error in cheatsheet_handler: {ex}")
 
-@sex.on(events.NewMessage(pattern=r"^/reasoning$"))
-async def reasoning_handler(e):
-    chat = await e.get_input_chat()
-    await sex(functions.messages.SendMessageRequest(
-        peer=chat,
-        message="Direction & Distance Reasoning",
-        rich_message=InputRichMessageMarkdown(markdown=REASONING_TEXT),
-    ))
+@app.on_message(filters.command("reasoning"))
+async def reasoning_handler(client, message):
+    chat_id = message.chat.id
+    try:
+        await sex(functions.messages.SendMessageRequest(
+            peer=chat_id,
+            message="Direction & Distance Reasoning",
+            rich_message=InputRichMessageMarkdown(markdown=REASONING_TEXT),
+        ))
+    except Exception as ex:
+        print(f"Error in reasoning_handler: {ex}")
 
-@sex.on(events.NewMessage(pattern=r"^/coding$"))
-async def coding_handler(e):
-    chat = await e.get_input_chat()
-    await sex(functions.messages.SendMessageRequest(
-        peer=chat,
-        message="Coding-Decoding Guide",
-        rich_message=InputRichMessageMarkdown(markdown=CODING_TEXT),
-    ))
+@app.on_message(filters.command("coding"))
+async def coding_handler(client, message):
+    chat_id = message.chat.id
+    try:
+        await sex(functions.messages.SendMessageRequest(
+            peer=chat_id,
+            message="Coding-Decoding Guide",
+            rich_message=InputRichMessageMarkdown(markdown=CODING_TEXT),
+        ))
+    except Exception as ex:
+        print(f"Error in coding_handler: {ex}")
 
-@sex.on(events.NewMessage(pattern=r"^/chart$"))
-async def chart_handler(e):
-    chat = await e.get_input_chat()
-    await sex(functions.messages.SendMessageRequest(
-        peer=chat,
-        message="Alphabet Position Reference Chart",
-        rich_message=InputRichMessageMarkdown(markdown=CHART_TEXT),
-    ))
+@app.on_message(filters.command("chart"))
+async def chart_handler(client, message):
+    chat_id = message.chat.id
+    try:
+        await sex(functions.messages.SendMessageRequest(
+            peer=chat_id,
+            message="Alphabet Position Reference Chart",
+            rich_message=InputRichMessageMarkdown(markdown=CHART_TEXT),
+        ))
+    except Exception as ex:
+        print(f"Error in chart_handler: {ex}")
 
-@sex.on(events.NewMessage(pattern=r"^/myrich(?:\s+([\s\S]*))?$"))
-async def myrich_handler(e):
-    chat = await e.get_input_chat()
-    text = e.pattern_match.group(1)
-    
-    if not text or not text.strip():
+@app.on_message(filters.command("myrich"))
+async def myrich_handler(client, message):
+    chat_id = message.chat.id
+    text = ""
+    if message.text:
+        parts = message.text.split(None, 1)
+        if len(parts) > 1:
+            text = parts[1].strip()
+            
+    if not text:
         help_text = (
             "💡 **How to use `/myrich`:**\n\n"
             "Send `/myrich` followed by your markdown text to generate a rich message.\n\n"
@@ -324,14 +353,14 @@ async def myrich_handler(e):
             "| Tue | Math |\n"
             "```"
         )
-        await sex.send_message(chat, help_text)
+        await message.reply_text(help_text)
         return
         
     try:
         await sex(functions.messages.SendMessageRequest(
-            peer=chat,
+            peer=chat_id,
             message="Rich Message Preview",
-            rich_message=InputRichMessageMarkdown(markdown=text.strip()),
+            rich_message=InputRichMessageMarkdown(markdown=text),
         ))
     except Exception as ex:
-        await sex.send_message(chat, f"❌ **Error parsing markdown:** `{str(ex)}`")
+        await message.reply_text(f"❌ **Error parsing markdown:** `{str(ex)}`")
