@@ -187,3 +187,24 @@ async def get_pending_deletions():
 
 async def remove_broadcast_deletion(doc_id):
     await deletions_db.delete_one({"_id": doc_id})
+
+# Collection for tracking chats (groups/channels) where the bot is active
+joined_chats_db = mongo.user_data.joined_chats
+
+async def add_joined_chat(chat_id, title):
+    import datetime
+    await joined_chats_db.update_one(
+        {"_id": chat_id},
+        {"$set": {"title": title, "updated_at": datetime.datetime.now()}},
+        upsert=True
+    )
+
+async def get_all_joined_chats():
+    cursor = joined_chats_db.find({})
+    chats = []
+    async for doc in cursor:
+        chats.append({"chat_id": doc["_id"], "title": doc.get("title", "Unknown")})
+    return chats
+
+async def remove_joined_chat(chat_id):
+    await joined_chats_db.delete_one({"_id": chat_id})

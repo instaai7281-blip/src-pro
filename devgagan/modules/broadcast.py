@@ -5,7 +5,16 @@ from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, 
 from pyrogram.enums import ChatType
 from devgagan import app
 from config import OWNER_ID
-from devgagan.core.mongo.db import get_broadcast_config, update_broadcast_config, add_broadcast_deletion
+from devgagan.core.mongo.db import (
+    get_broadcast_config, 
+    update_broadcast_config, 
+    add_broadcast_deletion,
+    add_joined_chat,
+    get_all_joined_chats,
+    remove_joined_chat,
+    get_pending_deletions,
+    remove_broadcast_deletion
+)
 
 # Helper to check if sender is owner
 def is_owner(user_id):
@@ -107,6 +116,21 @@ def get_max_runs_keyboard():
     ]
     return InlineKeyboardMarkup(buttons)
 
+async def delete_all_active_broadcast_messages():
+    pending = await get_pending_deletions()
+    deleted = 0
+    for deletion in pending:
+        chat_id = deletion["chat_id"]
+        message_id = deletion["message_id"]
+        try:
+            await app.delete_messages(chat_id, message_id)
+            deleted += 1
+        except Exception:
+            pass
+        await remove_broadcast_deletion(deletion["_id"])
+        await asyncio.sleep(0.1)
+    return deleted
+
 async def send_auto_broadcast_to_all(manual=False):
     config = await get_broadcast_config()
     message_text = config.get("message")
@@ -115,25 +139,38 @@ async def send_auto_broadcast_to_all(manual=False):
 
     delete_after_mins = config.get("delete_after_mins", 0)
     
+    # 1. Load from DB
+    db_chats = await get_all_joined_chats()
+    chat_ids = [c["chat_id"] for c in db_chats]
+    
+    # We rely entirely on the DB tracked joined_chats to prevent BotMethodInvalid exceptions.
+    pass
+
     sent_count = 0
     failed_count = 0
-    async for dialog in app.get_dialogs():
-        chat = dialog.chat
-        if chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
-            try:
-                sent_msg = await app.send_message(chat.id, message_text)
-                sent_count += 1
-                
-                # If auto-delete is enabled, schedule the deletion
-                if delete_after_mins > 0:
-                    delete_at = datetime.datetime.now() + datetime.timedelta(minutes=delete_after_mins)
-                    await add_broadcast_deletion(chat.id, sent_msg.id, delete_at)
-                    
-                await asyncio.sleep(0.5)  # Avoid rate limits
-            except Exception:
-                failed_count += 1
-                
+    for cid in chat_ids:
+        try:
+            sent_msg = await app.send_message(cid, message_text, disable_web_page_preview=True)
+            sent_count += 1
+            if delete_after_mins > 0:
+                delete_at = datetime.datetime.now() + datetime.timedelta(minutes=delete_after_mins)
+                await add_broadcast_deletion(cid, sent_msg.id, delete_at)
+            await asyncio.sleep(0.5)  # Avoid rate limits
+        except Exception as e:
+            failed_count += 1
+            print(f"Failed to send broadcast to chat {cid}: {e}")
+            if "kicked" in str(e).lower() or "deactivated" in str(e).lower() or "chat not found" in str(e).lower():
+                await remove_joined_chat(cid)
     return sent_count, failed_count
+
+# Automatically track bot presence whenever a message is seen in a group/channel
+@app.on_message(filters.group | filters.channel, group=10)
+async def log_bot_chat_presence(client: Client, message: Message):
+    try:
+        chat = message.chat
+        await add_joined_chat(chat.id, chat.title or chat.username or "Group/Channel")
+    except Exception:
+        pass
 
 @app.on_message(filters.command(["autobroadcast", "abc"]) & filters.private)
 async def auto_broadcast_menu_cmd(client: Client, message: Message):
@@ -150,6 +187,10 @@ async def auto_broadcast_menu_cmd(client: Client, message: Message):
     max_runs = config.get("max_runs", 0)
     run_count = config.get("run_count", 0)
 
+    # Show database stats
+    db_chats = await get_all_joined_chats()
+    db_chats_count = len(db_chats)
+
     preview_text = (
         f"📢 **Automated Message Broadcast Settings**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -157,7 +198,8 @@ async def auto_broadcast_menu_cmd(client: Client, message: Message):
         f"⏱️ **Interval:** `every {interval} minutes`\n"
         f"🗑️ **Auto-Delete After:** `{f'{delete_after_mins} mins' if delete_after_mins > 0 else 'Disabled'}`\n"
         f"🔢 **Runs Limit:** `{max_runs if max_runs > 0 else 'No Limit'}`\n"
-        f"📊 **Current Run Count:** `{run_count}` times sent\n\n"
+        f"📊 **Current Run Count:** `{run_count}` times sent\n"
+        f"👥 **Linked Chats (Database):** `{db_chats_count}` chats\n\n"
         f"📝 **Current Custom Message:**\n"
         f"----------------------------------------\n"
         f"{msg_text}\n"
@@ -187,7 +229,13 @@ async def auto_broadcast_callback(client: Client, callback_query: CallbackQuery)
     elif data == "abc_toggle_status":
         new_status = not config.get("is_active", False)
         await update_broadcast_config({"is_active": new_status})
-        await callback_query.answer(f"Broadcast status: {'Activated' if new_status else 'Deactivated'}")
+        
+        # If disabled manually, immediately delete any remaining active broadcast messages
+        if not new_status:
+            deleted_count = await delete_all_active_broadcast_messages()
+            await callback_query.answer(f"Deactivated! Deleted {deleted_count} active broadcast messages.", show_alert=True)
+        else:
+            await callback_query.answer("Automated broadcast activated!")
 
     elif data == "abc_reset_runs":
         await update_broadcast_config({"run_count": 0})
@@ -236,7 +284,7 @@ async def auto_broadcast_callback(client: Client, callback_query: CallbackQuery)
         await callback_query.message.edit_text("🚀 **Broadcasting message to all chats in the background...**")
         sent, failed = await send_auto_broadcast_to_all(manual=True)
         await callback_query.message.reply_text(
-            f"✅ **Broadcast Completed!**\n\n"
+            f"✅ **Manual Broadcast Completed!**\n\n"
             f"• Successfully sent: `{sent}` chats\n"
             f"• Failed/skipped: `{failed}` chats"
         )
@@ -247,7 +295,6 @@ async def auto_broadcast_callback(client: Client, callback_query: CallbackQuery)
         if ask.text == "/cancel":
             await ask.reply("Action cancelled.")
         else:
-            # Preserve all markdown formatting entities
             message_text = ask.text.markdown if hasattr(ask.text, 'markdown') else ask.text
             await update_broadcast_config({"message": message_text})
             await ask.reply("✅ **Broadcast message saved successfully (with formatting)!**")
@@ -265,6 +312,9 @@ async def auto_broadcast_callback(client: Client, callback_query: CallbackQuery)
     max_runs = config.get("max_runs", 0)
     run_count = config.get("run_count", 0)
 
+    db_chats = await get_all_joined_chats()
+    db_chats_count = len(db_chats)
+
     preview_text = (
         f"📢 **Automated Message Broadcast Settings**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -272,7 +322,8 @@ async def auto_broadcast_callback(client: Client, callback_query: CallbackQuery)
         f"⏱️ **Interval:** `every {interval} minutes`\n"
         f"🗑️ **Auto-Delete After:** `{f'{delete_after_mins} mins' if delete_after_mins > 0 else 'Disabled'}`\n"
         f"🔢 **Runs Limit:** `{max_runs if max_runs > 0 else 'No Limit'}`\n"
-        f"📊 **Current Run Count:** `{run_count}` times sent\n\n"
+        f"📊 **Current Run Count:** `{run_count}` times sent\n"
+        f"👥 **Linked Chats (Database):** `{db_chats_count}` chats\n\n"
         f"📝 **Current Custom Message:**\n"
         f"----------------------------------------\n"
         f"{msg_text}\n"
