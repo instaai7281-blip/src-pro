@@ -92,10 +92,18 @@ async def schedule_broadcast_task():
                 if delete_at and now >= delete_at:
                     chat_id = deletion["chat_id"]
                     message_id = deletion["message_id"]
+                    # Try to delete using userbot if available, fallback to bot app
+                    from devgagan.core.get_func import get_client
+                    pro_client = get_client()
+                    client_to_use = pro_client if pro_client else app
                     try:
-                        await app.delete_messages(chat_id, message_id)
-                    except Exception as de:
-                        print(f"[AUTO BROADCAST DELETION] Failed to delete msg {message_id} in {chat_id}: {de}")
+                        await client_to_use.delete_messages(chat_id, message_id)
+                    except Exception:
+                        if client_to_use != app:
+                            try:
+                                await app.delete_messages(chat_id, message_id)
+                            except Exception as de:
+                                print(f"[AUTO BROADCAST DELETION] Fallback delete failed: {de}")
                     await remove_broadcast_deletion(deletion["_id"])
                     await asyncio.sleep(0.1)
 

@@ -117,16 +117,26 @@ def get_max_runs_keyboard():
     return InlineKeyboardMarkup(buttons)
 
 async def delete_all_active_broadcast_messages():
+    from devgagan.core.get_func import get_client
+    pro_client = get_client()
+    
     pending = await get_pending_deletions()
     deleted = 0
     for deletion in pending:
         chat_id = deletion["chat_id"]
         message_id = deletion["message_id"]
+        
+        client_to_use = pro_client if pro_client else app
         try:
-            await app.delete_messages(chat_id, message_id)
+            await client_to_use.delete_messages(chat_id, message_id)
             deleted += 1
         except Exception:
-            pass
+            if client_to_use != app:
+                try:
+                    await app.delete_messages(chat_id, message_id)
+                    deleted += 1
+                except Exception:
+                    pass
         await remove_broadcast_deletion(deletion["_id"])
         await asyncio.sleep(0.1)
     return deleted
@@ -143,31 +153,46 @@ async def send_auto_broadcast_to_all(manual=False):
     db_chats = await get_all_joined_chats()
     chat_ids = [c["chat_id"] for c in db_chats]
     
-    # Try syncing new active chats via the userbot client get_dialogs (since userbots are allowed to call it!)
-    try:
-        from devgagan.core.get_func import get_client
-        pro_client = get_client()
-        if pro_client:
+    # 2. Try syncing new active chats via the userbot client
+    from devgagan.core.get_func import get_client
+    pro_client = get_client()
+    
+    if pro_client:
+        try:
             async for dialog in pro_client.get_dialogs(limit=200):
                 chat = dialog.chat
                 if chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
                     if chat.id not in chat_ids:
                         chat_ids.append(chat.id)
                         await add_joined_chat(chat.id, chat.title or "Unknown")
-    except Exception as e:
-        print(f"Userbot sync chats fallback failed: {e}")
+        except Exception as e:
+            print(f"Userbot sync chats fallback failed: {e}")
 
     sent_count = 0
     failed_count = 0
     for cid in chat_ids:
+        client_to_use = pro_client if pro_client else app
         try:
-            sent_msg = await app.send_message(cid, message_text, disable_web_page_preview=True)
+            sent_msg = await client_to_use.send_message(cid, message_text, disable_web_page_preview=True)
             sent_count += 1
             if delete_after_mins > 0:
                 delete_at = datetime.datetime.now() + datetime.timedelta(minutes=delete_after_mins)
                 await add_broadcast_deletion(cid, sent_msg.id, delete_at)
             await asyncio.sleep(0.5)  # Avoid rate limits
         except Exception as e:
+            # Fallback to app client if userbot was used and failed
+            if client_to_use != app:
+                try:
+                    sent_msg = await app.send_message(cid, message_text, disable_web_page_preview=True)
+                    sent_count += 1
+                    if delete_after_mins > 0:
+                        delete_at = datetime.datetime.now() + datetime.timedelta(minutes=delete_after_mins)
+                        await add_broadcast_deletion(cid, sent_msg.id, delete_at)
+                    await asyncio.sleep(0.5)
+                    continue
+                except Exception as ae:
+                    print(f"Fallback bot send failed for {cid}: {ae}")
+            
             failed_count += 1
             print(f"Failed to send broadcast to chat {cid}: {e}")
             if "kicked" in str(e).lower() or "deactivated" in str(e).lower() or "chat not found" in str(e).lower():
