@@ -143,8 +143,19 @@ async def send_auto_broadcast_to_all(manual=False):
     db_chats = await get_all_joined_chats()
     chat_ids = [c["chat_id"] for c in db_chats]
     
-    # We rely entirely on the DB tracked joined_chats to prevent BotMethodInvalid exceptions.
-    pass
+    # Try syncing new active chats via the userbot client get_dialogs (since userbots are allowed to call it!)
+    try:
+        from devgagan.core.get_func import get_client
+        pro_client = get_client()
+        if pro_client:
+            async for dialog in pro_client.get_dialogs(limit=200):
+                chat = dialog.chat
+                if chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
+                    if chat.id not in chat_ids:
+                        chat_ids.append(chat.id)
+                        await add_joined_chat(chat.id, chat.title or "Unknown")
+    except Exception as e:
+        print(f"Userbot sync chats fallback failed: {e}")
 
     sent_count = 0
     failed_count = 0
@@ -335,3 +346,75 @@ async def auto_broadcast_callback(client: Client, callback_query: CallbackQuery)
         preview_text,
         reply_markup=get_broadcast_menu_keyboard(is_active, interval, delete_after_mins, max_runs, run_count)
     )
+
+# ────── Linked Chats Manual Management Commands ──────
+
+@app.on_message(filters.command(["addchat"]) & filters.private)
+async def add_chat_cmd(client: Client, message: Message):
+    user_id = message.from_user.id
+    if not is_owner(user_id):
+        await message.reply_text("❌ **Access Denied:** Only the bot owner can use this command.")
+        return
+
+    if len(message.command) < 2:
+        await message.reply_text("❌ **Usage:** `/addchat <chat_id_or_username>`\n\nExample:\n• `/addchat -10012345678`\n• `/addchat @my_channel`")
+        return
+
+    chat_input = message.command[1]
+    
+    # Try resolving to integer ID and title
+    try:
+        chat = await client.get_chat(chat_input)
+        chat_id = chat.id
+        title = chat.title or chat.username or "Group/Channel"
+    except Exception:
+        # If bot cannot resolve directly (e.g. not in chat yet), check if integer
+        try:
+            chat_id = int(chat_input)
+            title = "Manual Link (ID)"
+        except ValueError:
+            await message.reply_text("❌ **Error:** Invalid chat ID or username. Make sure the bot is added to that channel/group first!")
+            return
+
+    await add_joined_chat(chat_id, title)
+    await message.reply_text(f"✅ **Linked Chat Added!**\n\n• **Title:** `{title}`\n• **ID:** `{chat_id}`")
+
+@app.on_message(filters.command(["removechat"]) & filters.private)
+async def remove_chat_cmd(client: Client, message: Message):
+    user_id = message.from_user.id
+    if not is_owner(user_id):
+        await message.reply_text("❌ **Access Denied:** Only the bot owner can use this command.")
+        return
+
+    if len(message.command) < 2:
+        await message.reply_text("❌ **Usage:** `/removechat <chat_id>`\n\nExample:\n• `/removechat -10012345678`")
+        return
+
+    chat_input = message.command[1]
+    try:
+        chat_id = int(chat_input)
+    except ValueError:
+        await message.reply_text("❌ **Error:** Please provide a valid integer Chat ID to remove.")
+        return
+
+    await remove_joined_chat(chat_id)
+    await message.reply_text(f"✅ **Linked Chat Removed!**\n\n• **ID:** `{chat_id}`")
+
+@app.on_message(filters.command(["listchats"]) & filters.private)
+async def list_chats_cmd(client: Client, message: Message):
+    user_id = message.from_user.id
+    if not is_owner(user_id):
+        await message.reply_text("❌ **Access Denied:** Only the bot owner can use this command.")
+        return
+
+    db_chats = await get_all_joined_chats()
+    if not db_chats:
+        await message.reply_text("ℹ️ **No chats are currently linked.** Use `/addchat` or wait for the bot to auto-detect group/channel activity.")
+        return
+
+    text = "👥 **List of Linked Chats (Broadcast Destinations):**\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    for i, chat in enumerate(db_chats, 1):
+        text += f"{i}. **{chat['title']}**\n   • ID: `{chat['chat_id']}`\n\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    await message.reply_text(text)
