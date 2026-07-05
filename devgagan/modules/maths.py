@@ -3,6 +3,8 @@ from devgagan import sex
 from telethon import events, functions
 from telethon.tl.types import InputRichMessageMarkdown
 
+SIGNATURE = "\n\n---\n🛡️ **Owner:** [𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘 ⚝](https://t.me/CHOSEN_ONEx_bot)"
+
 START_TEXT = r"""
 # 🎓 Ultimate Study & Math Reference Bot
 
@@ -20,8 +22,7 @@ Here is the directory of available reference commands:
 - `/coding` - Coding-Decoding Reasoning logic & Shift Diagram
 - `/chart` - Alphabet A-Z Position Reference Grid Chart
 
-*Use these commands to quickly pull up study materials anytime!*
-"""
+*Use these commands to quickly pull up study materials anytime!*""" + SIGNATURE
 
 MATH_TEXT = r"""
 # 📐 Higher Mathematics Formulas
@@ -50,8 +51,7 @@ MATH_TEXT = r"""
   $$P(A|B) = \frac{P(B|A) \cdot P(A)}{P(B)}$$
   
 * **Standard Deviation (Sample):**
-  $$s = \sqrt{\frac{\sum_{i=1}^{n} (x_i - \bar{x})^2}{n-1}}$$
-"""
+  $$s = \sqrt{\frac{\sum_{i=1}^{n} (x_i - \bar{x})^2}{n-1}}$$""" + SIGNATURE
 
 ARITHMETIC_TEXT = r"""
 # 🧮 Arithmetic: Percentages & Ratios
@@ -84,8 +84,7 @@ ARITHMETIC_TEXT = r"""
   
 * **Direct Variation:** $y = k \cdot x$ (where $k$ is constant)
 
-* **Inverse Variation:** $y = \frac{k}{x} \implies x \cdot y = k$
-"""
+* **Inverse Variation:** $y = \frac{k}{x} \implies x \cdot y = k$""" + SIGNATURE
 
 GEOMETRY_TEXT = r"""
 # 📏 Geometry: Area & Volume Formulas
@@ -108,8 +107,7 @@ GEOMETRY_TEXT = r"""
 | **Cylinder** | $V = \pi r^2 h$ | $A = 2\pi r(r + h)$ |
 | **Cone** | $V = \frac{1}{3}\pi r^2 h$ | $A = \pi r(r + \sqrt{r^2 + h^2})$ |
 | **Cube** | $V = a^3$ | $A = 6a^2$ |
-| **Rect. Prism** | $V = l \cdot w \cdot h$ | $A = 2(lw + lh + wh)$ |
-"""
+| **Rect. Prism** | $V = l \cdot w \cdot h$ | $A = 2(lw + lh + wh)$ |""" + SIGNATURE
 
 CHEATSHEET_TEXT = r"""
 # 📊 Subject Cheat Sheet
@@ -121,8 +119,7 @@ CHEATSHEET_TEXT = r"""
 | **Chemistry**| Ideal Gas | $PV = nRT$ | Pressure, Vol, Temp relation |
 | **Chemistry**| pH Value | $\text{pH} = -\log_{10}[\text{H}^+]$ | Acidity/Alkalinity measure |
 | **Math** | Euler Poly | $V - E + F = 2$ | Vertices, Edges, Faces |
-| **Math** | Euler Identity| $e^{i\pi} + 1 = 0$ | Linking 5 major constants |
-"""
+| **Math** | Euler Identity| $e^{i\pi} + 1 = 0$ | Linking 5 major constants |""" + SIGNATURE
 
 TIMETABLE_TEXT = r"""
 # 📅 Study Timetable
@@ -137,8 +134,7 @@ TIMETABLE_TEXT = r"""
 | **Sat** | Full Mock Test 🏆 | Performance Analysis 📊 | General Knowledge 🌍 |
 | **Sun** | Off / Buffer Time 🏖️ | Plan Next Week 📅 | Reading Books 📚 |
 
-> **Success Quote:** "There are no secrets to success. It is the result of preparation, hard work, and learning from failure." — _Colin Powell_
-"""
+> **Success Quote:** "There are no secrets to success. It is the result of preparation, hard work, and learning from failure." — _Colin Powell_""" + SIGNATURE
 
 CHECKLIST_TEXT = r"""
 # 📋 Syllabus Tracker Checklist
@@ -160,8 +156,7 @@ CHECKLIST_TEXT = r"""
 
 - [x] Mechanics: Newton's Laws & Friction
 - [ ] Gravity & Orbital Mechanics
-- [ ] Thermodynamics & Heat Transfer
-"""
+- [ ] Thermodynamics & Heat Transfer""" + SIGNATURE
 
 REASONING_TEXT = r"""
 # 🧭 Direction & Distance Reasoning Question
@@ -218,8 +213,7 @@ W <------+------> E (East)
    Since $ABCD$ forms a rectangle:
    $$\text{Distance } AD = \text{Distance } BC = 5\text{ meters}$$
 2. **Direction (D with respect to A):**
-   Point D is directly above Point A, which represents the **North** direction.
-"""
+   Point D is directly above Point A, which represents the **North** direction.""" + SIGNATURE
 
 CODING_TEXT = r"""
 # 🔐 Coding-Decoding Reasoning Guide
@@ -263,8 +257,7 @@ Applying the exact same **+3 shift** logic to each letter of **"SMART"**:
 
 ### 📐 Final Coded Answer:
 
-> **"SMART"** ➔ **"VpdUW"**
-"""
+> **"SMART"** ➔ **"VpdUW"**""" + SIGNATURE
 
 CHART_TEXT = r"""
 # 🔠 Alphabet Position Reference Chart
@@ -287,8 +280,7 @@ Use this grid reference chart for solving **Coding-Decoding** problems:
 | **L** | `12` | **Y** | `25` |
 | **M** | `13` | **Z** | `26` |
 
-> **Tip:** Memorizing this chart or writing it down quickly in exams will save you valuable time!
-"""
+> **Tip:** Memorizing this chart or writing it down quickly in exams will save you valuable time!""" + SIGNATURE
 
 @sex.on(events.NewMessage(pattern=r"^/(math|maths)$"))
 async def maths_menu_handler(e):
