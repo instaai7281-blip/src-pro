@@ -3,58 +3,105 @@ from devgagan import sex
 from telethon import events, functions
 from telethon.tl.types import InputRichMessageMarkdown
 
+START_TEXT = r"""
+# 🎓 Ultimate Study & Math Reference Bot
+
+Welcome! I'm formatted using **Telegram's Rich Markdown** (tables, LaTeX math, checklists, quotes, code).
+
+Here is the directory of available reference commands:
+
+- `/math` - Higher Mathematics (Algebra, Calculus, Statistics)
+- `/arithmetic` - Percentage, Ratio, Interest & Proportion formulas
+- `/geometry` - Area, Perimeter, and Volume of 2D/3D shapes
+- `/cheatsheet` - Formula quick reference table (Physics, Chemistry & Math)
+- `/timetable` - Weekly Study Planner & Schedule
+- `/checklist` - Syllabus checklist & tracker
+- `/reasoning` - Direction & Distance Reasoning Question with Diagram
+- `/coding` - Coding-Decoding Reasoning logic & Shift Diagram
+- `/chart` - Alphabet A-Z Position Reference Grid Chart
+
+*Use these commands to quickly pull up study materials anytime!*
+"""
+
 MATH_TEXT = r"""
 # 📐 Higher Mathematics Formulas
+
 ## 1. Algebra & Series
+
 * **Quadratic Formula:**
   If $ax^2 + bx + c = 0$, then:
+  
   $$x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$
+  
 * **Binomial Theorem:**
   $$(a+b)^n = \sum_{k=0}^{n} \binom{n}{k} a^{n-k} b^k$$
+
 ## 2. Calculus
+
 * **Derivative Definition:**
   $$f'(x) = \lim_{h \to 0} \frac{f(x+h) - f(x)}{h}$$
+  
 * **Integration by Parts:**
   $$\int u\,dv = uv - \int v\,du$$
+
 ## 3. Probability & Statistics
+
 * **Bayes' Theorem:**
   $$P(A|B) = \frac{P(B|A) \cdot P(A)}{P(B)}$$
+  
 * **Standard Deviation (Sample):**
   $$s = \sqrt{\frac{\sum_{i=1}^{n} (x_i - \bar{x})^2}{n-1}}$$
 """
 
 ARITHMETIC_TEXT = r"""
 # 🧮 Arithmetic: Percentages & Ratios
+
 ## 1. Percentages
+
 * **Percentage Change:**
   $$\text{Percentage Change} = \frac{\text{New Value} - \text{Old Value}}{\text{Old Value}} \times 100\%$$
+  
 * **Profit & Loss Percentage:**
   $$\text{Profit \%} = \frac{\text{Selling Price} - \text{Cost Price}}{\text{Cost Price}} \times 100\%$$
+  
   $$\text{Loss \%} = \frac{\text{Cost Price} - \text{Selling Price}}{\text{Cost Price}} \times 100\%$$
+  
 * **Simple Interest:**
   $$I = \frac{P \cdot r \cdot t}{100}$$
+  
 * **Compound Interest:**
   $$A = P \left(1 + \frac{r}{n}\right)^{nt}$$
+  
   _Where $A$ is the total amount, $P$ is principal, $r$ is interest rate, $n$ is compounding frequency, and $t$ is time._
+
 ## 2. Ratio & Proportion
+
 * **Ratio Equality (Proportion):**
   $$\frac{a}{b} = \frac{c}{d} \implies a \cdot d = b \cdot c$$
+  
 * **Compound Ratio:**
   $$\text{Compound of } a:b \text{ and } c:d \text{ is } (a \cdot c) : (b \cdot d)$$
+  
 * **Direct Variation:** $y = k \cdot x$ (where $k$ is constant)
+
 * **Inverse Variation:** $y = \frac{k}{x} \implies x \cdot y = k$
 """
 
 GEOMETRY_TEXT = r"""
 # 📏 Geometry: Area & Volume Formulas
+
 ## 1. 2D Shapes (Area & Perimeter)
+
 * **Circle:**
   * $\text{Area} = \pi r^2$
   * $\text{Circumference} = 2\pi r$
+  
 * **Triangle:**
   * $\text{Area} = \frac{1}{2} \cdot b \cdot h$
   * $\text{Heron's Formula:} \sqrt{s(s-a)(s-b)(s-c)} \quad \text{where } s = \frac{a+b+c}{2}$
+
 ## 2. 3D Solids (Volume & Surface Area)
+
 | Solid Shape | Volume Formula | Total Surface Area (TSA) |
 |:---|:---:|:---|
 | **Sphere** | $V = \frac{4}{3}\pi r^3$ | $A = 4\pi r^2$ |
@@ -66,6 +113,7 @@ GEOMETRY_TEXT = r"""
 
 CHEATSHEET_TEXT = r"""
 # 📊 Subject Cheat Sheet
+
 | Subject | Topic | Key Formula | Explanation |
 |:---|:---|:---:|:---|
 | **Physics** | Gravity | $F = G \frac{m_1 m_2}{r^2}$ | Universal Gravitational Force |
@@ -78,6 +126,7 @@ CHEATSHEET_TEXT = r"""
 
 TIMETABLE_TEXT = r"""
 # 📅 Study Timetable
+
 | Day | 09:00 - 12:00 | 14:00 - 17:00 | 19:00 - 22:00 |
 |:---|:---:|:---:|:---:|
 | **Mon** | Math (Algebra) 📐 | Physics (Mechanics) ⚛️ | Revision & Homework 📝 |
@@ -87,21 +136,28 @@ TIMETABLE_TEXT = r"""
 | **Fri** | Chemistry (Inorg) 🧪 | Revision 📝 | Project Work 🚀 |
 | **Sat** | Full Mock Test 🏆 | Performance Analysis 📊 | General Knowledge 🌍 |
 | **Sun** | Off / Buffer Time 🏖️ | Plan Next Week 📅 | Reading Books 📚 |
+
 > **Success Quote:** "There are no secrets to success. It is the result of preparation, hard work, and learning from failure." — _Colin Powell_
 """
 
 CHECKLIST_TEXT = r"""
 # 📋 Syllabus Tracker Checklist
+
 ## 1. Mathematics
+
 - [x] Algebra: Quadratic Equations & Binomials
 - [x] Calculus: Limits & Basic Derivatives
 - [ ] Integration: Definite & Indefinite Integrals
 - [ ] Statistics: Variance & Standard Deviation
+
 ## 2. Arithmetic
+
 - [x] Ratio & Proportion rules
 - [x] Simple & Compound Interest formulas
 - [ ] Percentage profit, loss & discount hacks
+
 ## 3. Physics
+
 - [x] Mechanics: Newton's Laws & Friction
 - [ ] Gravity & Orbital Mechanics
 - [ ] Thermodynamics & Heat Transfer
@@ -109,13 +165,20 @@ CHECKLIST_TEXT = r"""
 
 REASONING_TEXT = r"""
 # 🧭 Direction & Distance Reasoning Question
+
 ## ❓ Question
+
 Rohan starts from Point **A** and walks **10 meters East** to reach Point **B**. Then he turns left (**North**) and walks **5 meters** to reach Point **C**. Finally, he turns left (**West**) and walks **10 meters** to reach Point **D**.
+
 1. What is the shortest distance between his starting point (A) and ending point (D)?
 2. In which direction is Point D with respect to Point A?
+
 ---
+
 ## 🗺️ Direction Map & Walk Diagram
+
 ### 1. General Direction Indicator
+
 ```
        N (North)
          ^
@@ -125,7 +188,9 @@ W <------+------> E (East)
          v
        S (South)
 ```
+
 ### 2. Step-by-Step Path Diagram
+
 ```
         10 meters (West)
     D <------------------ C
@@ -137,13 +202,18 @@ W <------+------> E (East)
     A ------------------> B
         10 meters (East)
 ```
+
 ---
+
 ## 💡 Answer & Step-by-Step Explanation
+
 * **Starting Point:** Point A
 * **Step 1 (A ➔ B):** Walks 10m East. So, Point B is 10m East of Point A.
 * **Step 2 (B ➔ C):** Turns left (which faces North) and walks 5m. Point C is 5m North of B.
 * **Step 3 (C ➔ D):** Turns left (which faces West) and walks 10m. Since $CD = AB = 10\text{m}$, Point D lies directly above Point A.
+
 ### 📐 Final Answers:
+
 1. **Shortest Distance (A to D):**
    Since $ABCD$ forms a rectangle:
    $$\text{Distance } AD = \text{Distance } BC = 5\text{ meters}$$
@@ -153,13 +223,20 @@ W <------+------> E (East)
 
 CODING_TEXT = r"""
 # 🔐 Coding-Decoding Reasoning Guide
+
 ## ❓ Problem Example
+
 In a certain secret code language:
 > **"STUDY"** is coded as **"VwxgB"**
+
 **How will the word "SMART" be coded in that same language?**
+
 ---
+
 ## 🗺️ Logic Shift Diagram
+
 Here is how each letter shifts forward by **+3 positions** in the alphabet:
+
 ```
 Input Word:  S   T   U   D   Y
              │   │   │   │   │
@@ -167,10 +244,15 @@ Shift Value: +3  +3  +3  +3  +3
              ▼   ▼   ▼   ▼   ▼
 Coded Word:  V   W   X   G   B
 ```
+
 *(Note: For Y + 3, we wrap around: Y ➔ Z ➔ A ➔ B)*
+
 ---
+
 ## 💡 Step-by-Step Decoding for "SMART"
+
 Applying the exact same **+3 shift** logic to each letter of **"SMART"**:
+
 | Letter | Shift Logic | Resulting Letter |
 |:---:|:---:|:---:|
 | **S** | $S \xrightarrow{+3} (T, U, V)$ | **V** |
@@ -178,13 +260,17 @@ Applying the exact same **+3 shift** logic to each letter of **"SMART"**:
 | **A** | $A \xrightarrow{+3} (B, C, D)$ | **D** |
 | **R** | $R \xrightarrow{+3} (S, T, W)$ | **U** |
 | **T** | $T \xrightarrow{+3} (U, V, W)$ | **W** |
+
 ### 📐 Final Coded Answer:
+
 > **"SMART"** ➔ **"VpdUW"**
 """
 
 CHART_TEXT = r"""
 # 🔠 Alphabet Position Reference Chart
+
 Use this grid reference chart for solving **Coding-Decoding** problems:
+
 | Letter | Position | Letter | Position |
 |:---:|:---:|:---:|:---:|
 | **A** | `1` | **N** | `14` |
@@ -200,33 +286,96 @@ Use this grid reference chart for solving **Coding-Decoding** problems:
 | **K** | `11` | **X** | `24` |
 | **L** | `12` | **Y** | `25` |
 | **M** | `13` | **Z** | `26` |
+
 > **Tip:** Memorizing this chart or writing it down quickly in exams will save you valuable time!
 """
 
 @sex.on(events.NewMessage(pattern=r"^/(math|maths)$"))
-async def maths_handler(e):
+async def maths_menu_handler(e):
     chat = await e.get_input_chat()
-    
-    # Send all reference sheets consecutively as requested
-    texts = [
-        ("Mathematics Formulas", MATH_TEXT),
-        ("Arithmetic", ARITHMETIC_TEXT),
-        ("Geometry", GEOMETRY_TEXT),
-        ("Cheat Sheet", CHEATSHEET_TEXT),
-        ("Timetable", TIMETABLE_TEXT),
-        ("Checklist", CHECKLIST_TEXT),
-        ("Reasoning", REASONING_TEXT),
-        ("Coding", CODING_TEXT),
-        ("Chart", CHART_TEXT)
-    ]
-    
-    for title, text in texts:
-        try:
-            await sex(functions.messages.SendMessageRequest(
-                peer=chat,
-                message=title,
-                rich_message=InputRichMessageMarkdown(markdown=text),
-            ))
-            await asyncio.sleep(0.5)  # Safe delay to avoid flood wait limits
-        except Exception as ex:
-            print(f"Error sending math broadcast item {title}: {ex}")
+    await sex(functions.messages.SendMessageRequest(
+        peer=chat,
+        message="Study Reference Menu",
+        rich_message=InputRichMessageMarkdown(markdown=START_TEXT),
+    ))
+
+@sex.on(events.NewMessage(pattern=r"^/algebra$"))
+async def algebra_handler(e):
+    chat = await e.get_input_chat()
+    await sex(functions.messages.SendMessageRequest(
+        peer=chat,
+        message="Mathematics Formulas",
+        rich_message=InputRichMessageMarkdown(markdown=MATH_TEXT),
+    ))
+
+@sex.on(events.NewMessage(pattern=r"^/arithmetic$"))
+async def arithmetic_handler(e):
+    chat = await e.get_input_chat()
+    await sex(functions.messages.SendMessageRequest(
+        peer=chat,
+        message="Arithmetic Formulas",
+        rich_message=InputRichMessageMarkdown(markdown=ARITHMETIC_TEXT),
+    ))
+
+@sex.on(events.NewMessage(pattern=r"^/geometry$"))
+async def geometry_handler(e):
+    chat = await e.get_input_chat()
+    await sex(functions.messages.SendMessageRequest(
+        peer=chat,
+        message="Geometry Formulas",
+        rich_message=InputRichMessageMarkdown(markdown=GEOMETRY_TEXT),
+    ))
+
+@sex.on(events.NewMessage(pattern=r"^/cheatsheet$"))
+async def cheatsheet_handler(e):
+    chat = await e.get_input_chat()
+    await sex(functions.messages.SendMessageRequest(
+        peer=chat,
+        message="Cheat Sheet",
+        rich_message=InputRichMessageMarkdown(markdown=CHEATSHEET_TEXT),
+    ))
+
+@sex.on(events.NewMessage(pattern=r"^/timetable$"))
+async def timetable_handler(e):
+    chat = await e.get_input_chat()
+    await sex(functions.messages.SendMessageRequest(
+        peer=chat,
+        message="Study Timetable",
+        rich_message=InputRichMessageMarkdown(markdown=TIMETABLE_TEXT),
+    ))
+
+@sex.on(events.NewMessage(pattern=r"^/checklist$"))
+async def checklist_handler(e):
+    chat = await e.get_input_chat()
+    await sex(functions.messages.SendMessageRequest(
+        peer=chat,
+        message="Syllabus Checklist Tracker",
+        rich_message=InputRichMessageMarkdown(markdown=CHECKLIST_TEXT),
+    ))
+
+@sex.on(events.NewMessage(pattern=r"^/reasoning$"))
+async def reasoning_handler(e):
+    chat = await e.get_input_chat()
+    await sex(functions.messages.SendMessageRequest(
+        peer=chat,
+        message="Direction & Distance Reasoning",
+        rich_message=InputRichMessageMarkdown(markdown=REASONING_TEXT),
+    ))
+
+@sex.on(events.NewMessage(pattern=r"^/coding$"))
+async def coding_handler(e):
+    chat = await e.get_input_chat()
+    await sex(functions.messages.SendMessageRequest(
+        peer=chat,
+        message="Coding-Decoding Guide",
+        rich_message=InputRichMessageMarkdown(markdown=CODING_TEXT),
+    ))
+
+@sex.on(events.NewMessage(pattern=r"^/chart$"))
+async def chart_handler(e):
+    chat = await e.get_input_chat()
+    await sex(functions.messages.SendMessageRequest(
+        peer=chat,
+        message="Alphabet Position Reference Chart",
+        rich_message=InputRichMessageMarkdown(markdown=CHART_TEXT),
+    ))
