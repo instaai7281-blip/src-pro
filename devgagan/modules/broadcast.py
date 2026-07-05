@@ -1,8 +1,8 @@
 import asyncio
 import datetime
 from pyrogram import filters, Client
-from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
-from pyrogram.enums import ChatType
+from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, ChatMemberUpdated
+from pyrogram.enums import ChatType, ChatMemberStatus
 from devgagan import app
 from config import OWNER_ID
 from devgagan.core.mongo.db import (
@@ -346,6 +346,31 @@ async def auto_broadcast_callback(client: Client, callback_query: CallbackQuery)
         preview_text,
         reply_markup=get_broadcast_menu_keyboard(is_active, interval, delete_after_mins, max_runs, run_count)
     )
+
+# ────── Chat Member Updated (Bot Join/Kick Auto-Detection) ──────
+
+@app.on_chat_member_updated()
+async def on_bot_chat_member_updated(client: Client, chat_member_updated: ChatMemberUpdated):
+    try:
+        my_id = (await client.get_me()).id
+        new_member = chat_member_updated.new_chat_member
+        
+        # Check if this update concerns the bot itself
+        if new_member and new_member.user.id == my_id:
+            chat = chat_member_updated.chat
+            status = new_member.status
+            
+            # If bot was added as administrator or member
+            if status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
+                await add_joined_chat(chat.id, chat.title or chat.username or "Group/Channel")
+                print(f"[AUTO DETECT] Bot added to chat: {chat.title or chat.id} (ID: {chat.id}). Added to broadcast list.")
+            
+            # If bot was kicked, banned, or left the chat
+            elif status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
+                await remove_joined_chat(chat.id)
+                print(f"[AUTO DETECT] Bot left/kicked from chat: {chat.title or chat.id} (ID: {chat.id}). Removed from broadcast list.")
+    except Exception as e:
+        print(f"Error in on_bot_chat_member_updated: {e}")
 
 # ────── Linked Chats Manual Management Commands ──────
 
