@@ -167,3 +167,23 @@ async def update_broadcast_config(update_dict):
         {"$set": update_dict},
         upsert=True
     )
+
+# Collection for tracking auto-deletion of sent broadcast messages
+deletions_db = mongo.user_data.scheduled_broadcast_deletions
+
+async def add_broadcast_deletion(chat_id, message_id, delete_at):
+    await deletions_db.insert_one({
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "delete_at": delete_at
+    })
+
+async def get_pending_deletions():
+    cursor = deletions_db.find({})
+    deletions = []
+    async for doc in cursor:
+        deletions.append(doc)
+    return deletions
+
+async def remove_broadcast_deletion(doc_id):
+    await deletions_db.delete_one({"_id": doc_id})

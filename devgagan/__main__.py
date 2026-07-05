@@ -75,18 +75,44 @@ async def daily_plans_broadcast_task():
 async def schedule_broadcast_task():
     import datetime
     from devgagan import app
-    from devgagan.core.mongo.db import get_broadcast_config, update_broadcast_config
-    from pyrogram.enums import ChatType
+    from devgagan.core.mongo.db import (
+        get_broadcast_config, 
+        update_broadcast_config, 
+        get_pending_deletions, 
+        remove_broadcast_deletion
+    )
     
     while True:
         try:
+            # 1) Handle pending auto-deletions first
+            pending_deletions = await get_pending_deletions()
+            now = datetime.datetime.now()
+            for deletion in pending_deletions:
+                delete_at = deletion.get("delete_at")
+                if delete_at and now >= delete_at:
+                    chat_id = deletion["chat_id"]
+                    message_id = deletion["message_id"]
+                    try:
+                        await app.delete_messages(chat_id, message_id)
+                    except Exception as de:
+                        print(f"[AUTO BROADCAST DELETION] Failed to delete msg {message_id} in {chat_id}: {de}")
+                    await remove_broadcast_deletion(deletion["_id"])
+                    await asyncio.sleep(0.1)
+
+            # 2) Handle sending new broadcasts
             config = await get_broadcast_config()
             if config and config.get("is_active"):
                 interval_mins = config.get("interval_mins", 60)
                 last_run = config.get("last_run")
+                max_runs = config.get("max_runs", 0)
+                run_count = config.get("run_count", 0)
+                
+                if max_runs > 0 and run_count >= max_runs:
+                    await update_broadcast_config({"is_active": False})
+                    print(f"[AUTO BROADCAST] Max run limit ({max_runs}) reached. Deactivating.")
+                    continue
                 
                 should_run = False
-                now = datetime.datetime.now()
                 if not last_run:
                     should_run = True
                 else:
@@ -95,23 +121,23 @@ async def schedule_broadcast_task():
                         should_run = True
                         
                 if should_run:
-                    await update_broadcast_config({"last_run": now})
+                    new_run_count = run_count + 1
+                    await update_broadcast_config({
+                        "last_run": now,
+                        "run_count": new_run_count
+                    })
+                    
+                    if max_runs > 0 and new_run_count >= max_runs:
+                        await update_broadcast_config({"is_active": False})
+                        
                     message_text = config.get("message")
                     if message_text:
-                        sent_count = 0
-                        async for dialog in app.get_dialogs():
-                            chat = dialog.chat
-                            if chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
-                                try:
-                                    await app.send_message(chat.id, message_text)
-                                    sent_count += 1
-                                    await asyncio.sleep(0.5)
-                                except Exception as e:
-                                    print(f"Failed to send broadcast to {chat.id}: {e}")
-                        print(f"[AUTO BROADCAST] Sent broadcast message to {sent_count} chats.")
+                        from devgagan.modules.broadcast import send_auto_broadcast_to_all
+                        sent, failed = await send_auto_broadcast_to_all()
+                        print(f"[AUTO BROADCAST] Sent run #{new_run_count}. Sent: {sent}, Failed: {failed}.")
         except Exception as e:
             print(f"[AUTO BROADCAST] Error in scheduler: {e}")
-        await asyncio.sleep(60)
+        await asyncio.sleep(30)
 
 async def schedule_daily_plans_broadcast():
     import datetime
