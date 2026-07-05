@@ -154,7 +154,7 @@ async def auto_broadcast_menu_cmd(client: Client, message: Message):
         f"📢 **Automated Message Broadcast Settings**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"⚡ **Status:** `{'Active' if is_active else 'Inactive'}`\n"
-        f"⏱ wading **Interval:** `every {interval} minutes`\n"
+        f"⏱️ **Interval:** `every {interval} minutes`\n"
         f"🗑️ **Auto-Delete After:** `{f'{delete_after_mins} mins' if delete_after_mins > 0 else 'Disabled'}`\n"
         f"🔢 **Runs Limit:** `{max_runs if max_runs > 0 else 'No Limit'}`\n"
         f"📊 **Current Run Count:** `{run_count}` times sent\n\n"

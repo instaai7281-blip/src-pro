@@ -135,6 +135,32 @@ async def schedule_broadcast_task():
                         from devgagan.modules.broadcast import send_auto_broadcast_to_all
                         sent, failed = await send_auto_broadcast_to_all()
                         print(f"[AUTO BROADCAST] Sent run #{new_run_count}. Sent: {sent}, Failed: {failed}.")
+                        
+                        # Send real-time progress/stats report to the owner(s)
+                        from config import OWNER_ID
+                        owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
+                        for owner in owner_list:
+                            try:
+                                limit_str = f"{max_runs}" if max_runs > 0 else "Unlimited"
+                                delete_after_mins = config.get("delete_after_mins", 0)
+                                del_str = f"Yes (after {delete_after_mins} mins)" if delete_after_mins > 0 else "No (keep posts)"
+                                next_run = now + datetime.timedelta(minutes=interval_mins)
+                                next_run_str = next_run.strftime("%d-%m-%Y %I:%M:%S %p")
+                                
+                                report = (
+                                    f"📢 **[AUTO BROADCAST REPORT]** 📢\n"
+                                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                                    f"📊 **Runs Tracker:** `{new_run_count}` / `{limit_str}`\n"
+                                    f"📤 **Delivered to:** `{sent}` chats\n"
+                                    f"⚠️ **Failed/Skipped:** `{failed}` chats\n"
+                                    f"🗑️ **Auto-Delete Enabled:** `{del_str}`\n\n"
+                                    f"⏱️ **Next Scheduled Run:**\n"
+                                    f"📅 `{next_run_str}` (IST)\n"
+                                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                                )
+                                await app.send_message(owner, report)
+                            except Exception as oe:
+                                print(f"Failed to send broadcast report to owner {owner}: {oe}")
         except Exception as e:
             print(f"[AUTO BROADCAST] Error in scheduler: {e}")
         await asyncio.sleep(30)
