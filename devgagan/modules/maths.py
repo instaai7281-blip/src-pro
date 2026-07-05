@@ -16,9 +16,7 @@ Here is the directory of available reference commands:
 - `/arithmetic` - Percentage, Ratio, Interest & Proportion formulas
 - `/geometry` - Area, Perimeter, and Volume of 2D/3D shapes
 - `/cheatsheet` - Formula quick reference table (Physics, Chemistry & Math)
-- `/timetable` - Weekly Study Planner & Schedule
-- `/checklist` - Syllabus checklist & tracker
-- `/reasoning` - Direction & Distance Reasoning Question with Diagram
+- `/reasoning` - Direction & Distance Reasoning Tricks & Formulas
 - `/coding` - Coding-Decoding Reasoning logic & Shift Diagram
 - `/chart` - Alphabet A-Z Position Reference Grid Chart
 
@@ -121,99 +119,37 @@ CHEATSHEET_TEXT = r"""
 | **Math** | Euler Poly | $V - E + F = 2$ | Vertices, Edges, Faces |
 | **Math** | Euler Identity| $e^{i\pi} + 1 = 0$ | Linking 5 major constants |""" + SIGNATURE
 
-TIMETABLE_TEXT = r"""
-# 📅 Study Timetable
-
-| Day | 09:00 - 12:00 | 14:00 - 17:00 | 19:00 - 22:00 |
-|:---|:---:|:---:|:---:|
-| **Mon** | Math (Algebra) 📐 | Physics (Mechanics) ⚛️ | Revision & Homework 📝 |
-| **Tue** | Chemistry (Organic) 🧪| English Literature 📖 | Coding Practice 💻 |
-| **Wed** | Biology (Genetics) 🌿 | History (World War) 🏛️ | Mock Test Practice ⏱️ |
-| **Thu** | Math (Calculus) 📐 | Physics (Optics) ⚛️ | Coding Practice 💻 |
-| **Fri** | Chemistry (Inorg) 🧪 | Revision 📝 | Project Work 🚀 |
-| **Sat** | Full Mock Test 🏆 | Performance Analysis 📊 | General Knowledge 🌍 |
-| **Sun** | Off / Buffer Time 🏖️ | Plan Next Week 📅 | Reading Books 📚 |
-
-> **Success Quote:** "There are no secrets to success. It is the result of preparation, hard work, and learning from failure." — _Colin Powell_""" + SIGNATURE
-
-CHECKLIST_TEXT = r"""
-# 📋 Syllabus Tracker Checklist
-
-## 1. Mathematics
-
-- [x] Algebra: Quadratic Equations & Binomials
-- [x] Calculus: Limits & Basic Derivatives
-- [ ] Integration: Definite & Indefinite Integrals
-- [ ] Statistics: Variance & Standard Deviation
-
-## 2. Arithmetic
-
-- [x] Ratio & Proportion rules
-- [x] Simple & Compound Interest formulas
-- [ ] Percentage profit, loss & discount hacks
-
-## 3. Physics
-
-- [x] Mechanics: Newton's Laws & Friction
-- [ ] Gravity & Orbital Mechanics
-- [ ] Thermodynamics & Heat Transfer""" + SIGNATURE
-
 REASONING_TEXT = r"""
-# 🧭 Direction & Distance Reasoning Question
+# 🧭 Direction & Distance Tricks & Formulas
 
-## ❓ Question
-
-Rohan starts from Point **A** and walks **10 meters East** to reach Point **B**. Then he turns left (**North**) and walks **5 meters** to reach Point **C**. Finally, he turns left (**West**) and walks **10 meters** to reach Point **D**.
-
-1. What is the shortest distance between his starting point (A) and ending point (D)?
-2. In which direction is Point D with respect to Point A?
-
----
-
-## 🗺️ Direction Map & Walk Diagram
-
-### 1. General Direction Indicator
+## 1. The 8 Main Directions
 
 ```
        N (North)
-         ^
-         |
-W <------+------> E (East)
-(West)   |
-         v
+    NW  │  NE
+      \ │ /
+W ──────┼────── E (East)
+(West) /│\
+      / │ \
+    SW  │  SE
        S (South)
 ```
 
-### 2. Step-by-Step Path Diagram
+## 2. Key Rules & Tricks
 
-```
-        10 meters (West)
-    D <------------------ C
-    |                     ^
-    |                     |
-    | 5 meters            | 5 meters (North)
-    | (Shortest dist)     |
-    v                     |
-    A ------------------> B
-        10 meters (East)
-```
-
----
-
-## 💡 Answer & Step-by-Step Explanation
-
-* **Starting Point:** Point A
-* **Step 1 (A ➔ B):** Walks 10m East. So, Point B is 10m East of Point A.
-* **Step 2 (B ➔ C):** Turns left (which faces North) and walks 5m. Point C is 5m North of B.
-* **Step 3 (C ➔ D):** Turns left (which faces West) and walks 10m. Since $CD = AB = 10\text{m}$, Point D lies directly above Point A.
-
-### 📐 Final Answers:
-
-1. **Shortest Distance (A to D):**
-   Since $ABCD$ forms a rectangle:
-   $$\text{Distance } AD = \text{Distance } BC = 5\text{ meters}$$
-2. **Direction (D with respect to A):**
-   Point D is directly above Point A, which represents the **North** direction.""" + SIGNATURE
+* **Pythagoras Theorem:** For finding the shortest distance:
+  $$H^2 = B^2 + P^2 \implies H = \sqrt{B^2 + P^2}$$
+  
+  _Where $H$ is the hypotenuse (shortest distance), $B$ is the base, and $P$ is the perpendicular._
+  
+* **Turn Angles:**
+  * Left turn = $90^\circ$ Counter-Clockwise (CCW)
+  * Right turn = $90^\circ$ Clockwise (CW)
+  
+* **Shadow Cases:**
+  * **Sunrise (East):** Shadow is always in the **West**.
+  * **Sunset (West):** Shadow is always in the **East**.
+  * **Noon (12 PM):** No shadow is formed.""" + SIGNATURE
 
 CODING_TEXT = r"""
 # 🔐 Coding-Decoding Reasoning Guide
@@ -325,24 +261,6 @@ async def cheatsheet_handler(e):
         peer=chat,
         message="Cheat Sheet",
         rich_message=InputRichMessageMarkdown(markdown=CHEATSHEET_TEXT),
-    ))
-
-@sex.on(events.NewMessage(pattern=r"^/timetable$"))
-async def timetable_handler(e):
-    chat = await e.get_input_chat()
-    await sex(functions.messages.SendMessageRequest(
-        peer=chat,
-        message="Study Timetable",
-        rich_message=InputRichMessageMarkdown(markdown=TIMETABLE_TEXT),
-    ))
-
-@sex.on(events.NewMessage(pattern=r"^/checklist$"))
-async def checklist_handler(e):
-    chat = await e.get_input_chat()
-    await sex(functions.messages.SendMessageRequest(
-        peer=chat,
-        message="Syllabus Checklist Tracker",
-        rich_message=InputRichMessageMarkdown(markdown=CHECKLIST_TEXT),
     ))
 
 @sex.on(events.NewMessage(pattern=r"^/reasoning$"))
