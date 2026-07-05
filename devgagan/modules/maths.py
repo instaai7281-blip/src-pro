@@ -3,7 +3,7 @@ from devgagan import sex
 from telethon import events, functions
 from telethon.tl.types import InputRichMessageMarkdown
 
-SIGNATURE = "\n\n---\n🛡️ **Owner:** [𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘 ⚝](https://t.me/CHOSEN_ONEx_bot)"
+SIGNATURE = "\n\n---\n🛡️ **Owner:** [𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡Ｅ ⚝](https://t.me/CHOSEN_ONEx_bot)"
 
 START_TEXT = r"""
 # 🎓 Ultimate Study & Math Reference Bot
@@ -185,11 +185,11 @@ Applying the exact same **+3 shift** logic to each letter of **"SMART"**:
 
 | Letter | Shift Logic | Resulting Letter |
 |:---:|:---:|:---:|
-| **S** | $S \xrightarrow{+3} (T, U, V)$ | **V** |
-| **M** | $M \xrightarrow{+3} (N, O, P)$ | **P** |
-| **A** | $A \xrightarrow{+3} (B, C, D)$ | **D** |
-| **R** | $R \xrightarrow{+3} (S, T, W)$ | **U** |
-| **T** | $T \xrightarrow{+3} (U, V, W)$ | **W** |
+| **S** | S + 3 | **V** |
+| **M** | M + 3 | **P** |
+| **A** | A + 3 | **D** |
+| **R** | R + 3 | **U** |
+| **T** | T + 3 | **W** |
 
 ### 📐 Final Coded Answer:
 
