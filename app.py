@@ -48,8 +48,8 @@ def welcome():
     </head>
     <body>
         <div class="container">
-            <h1>🖤 RestrictBot Server is Active ⚝</h1>
-            <p>Powered by Team SPY</p>
+            <h1>🎓 Study Bot Server is Active ⚝</h1>
+            <p>Powered by 𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡Ｅ ⚝</p>
         </div>
     </body>
     </html>

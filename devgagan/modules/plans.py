@@ -63,7 +63,7 @@ async def remove_premium(client, message):
                 await tokens_col.delete_one({"user_id": user_id})
 
             await message.reply_text(
-                f"⚙️ 🖤 **𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘** 🖤 ⚙️\n"
+                f"⚙️ 🖤 **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦** 🖤 ⚙️\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"🗑️ **PREMIUM ACCESS REVOKED**\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -79,7 +79,7 @@ async def remove_premium(client, message):
                         f"⚠️ **NOTICE: PREMIUM EXPIRED/TERMINATED** ⚠️\n"
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                         f"Hello, your premium subscription or token session for \n"
-                        f"🖤 **CHOSEN ONE ⚝** has been terminated or expired.\n\n"
+                        f"🖤 **Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝** has been terminated or expired.\n\n"
                         f"💬 If you think this is a mistake or wish to renew, please contact the owner.\n"
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     )
@@ -91,7 +91,7 @@ async def remove_premium(client, message):
             await plans_db.remove_premium(user_id)
             await tokens_col.delete_one({"user_id": user_id})
             await message.reply_text(
-                f"⚙️ 🖤 **𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘** 🖤 ⚙️\n"
+                f"⚙️ 🖤 **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦** 🖤 ⚙️\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"🧹 **FORCE CLEANED**\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -127,7 +127,7 @@ async def myplan(client, message):
             
         time_left_str = f"{days} days, {hours} hours, {minutes} minutes"
         await message.reply_text(
-            f"✨ 🖤 **𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘** 🖤 ✨\n"
+            f"✨ 🖤 **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦** 🖤 ✨\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"👑 **YOUR PREMIUM STATUS** 👑\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -179,7 +179,7 @@ async def get_premium(client, message):
             
             time_left_str = f"{days} days, {hours} hours, {minutes} minutes"
             await message.reply_text(
-                f"🔍 🖤 **𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘** 🖤 🔍\n"
+                f"🔍 🖤 **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦** 🖤 🔍\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"👑 **PREMIUM USER DETAILS** 👑\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -200,76 +200,93 @@ async def get_premium(client, message):
 
 @app.on_message(filters.command("add") & filters.user(OWNER_ID))
 async def give_premium_cmd_handler(client, message):
-    if len(message.command) == 4:
-        time_zone = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
-        current_time = time_zone.strftime("%d-%m-%Y %I:%M:%S %p")
-        try:
-            user_id = int(message.command[1])
-        except ValueError:
-            await message.reply_text("❌ **Invalid user ID.** Please provide a numeric ID.")
-            return
+    parts = message.command
+    if len(parts) < 2:
+        await message.reply_text(
+            "📝 **Add Premium / Approve User Usage:**\n\n"
+            "• `/add <user_id>` (Approve lifetime / 99 years)\n"
+            "• `/add <user_id> lifetime` (Approve lifetime)\n"
+            "• `/add <user_id> <number> <days/hours/months>` (Approve specific duration)\n\n"
+            "**Examples:**\n"
+            "• `/add 868659158`\n"
+            "• `/add 868659158 30 days`"
+        )
+        return
 
-        user_mention = f"User (`{user_id}`)"
-        user_name = "User"
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        await message.reply_text("❌ **Invalid user ID.** Please provide a numeric ID.")
+        return
+
+    time_zone = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
+    current_time = time_zone.strftime("%d-%m-%Y %I:%M:%S %p")
+
+    user_mention = f"User (`{user_id}`)"
+    user_name = "User"
+    try:
+        user = await client.get_users(user_id)
+        if user:
+            user_mention = user.mention
+            user_name = user.mention
+    except Exception:
+        pass
+
+    if len(parts) == 2 or (len(parts) == 3 and parts[2].lower() == "lifetime"):
+        time_val = "99 years"
+    elif len(parts) == 4:
+        time_val = parts[2] + " " + parts[3]
+    else:
+        await message.reply_text("❌ **Invalid format.** Use `/add <user_id>` or `/add <user_id> <number> <unit>`.")
+        return
+
+    seconds = await get_seconds(time_val)
+    if seconds > 0:
+        expiry_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds)  
+        await plans_db.add_premium(user_id, expiry_time)  
+        data = await plans_db.check_premium(user_id)
+        expiry = data.get("expire_date")   
+        expiry_str_in_ist = expiry.astimezone(pytz.timezone("Asia/Kolkata")).strftime("%d-%m-%Y %I:%M:%S %p")         
+        await message.reply_text(
+            f"✨ 🖤 **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦** 🖤 ✨\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🌟 **PREMIUM ACCESS ACTIVATED** 🌟\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 **User:** {user_mention}\n"
+            f"🆔 **ID:** `{user_id}`\n"
+            f"⏳ **Duration:** `{time_val}`\n"
+            f"📅 **Start:** `{current_time}` (IST)\n"
+            f"⌛ **Expiry:** `{expiry_str_in_ist}` (IST)\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"✨ _Powered by CHOSEN ONE ⚝_", 
+            disable_web_page_preview=True
+        )
         try:
-            user = await client.get_users(user_id)
-            if user:
-                user_mention = user.mention
-                user_name = user.mention
+            await client.send_message(
+                chat_id=user_id,
+                text=(
+                    f"🎉 **CONGRATULATIONS! PREMIUM ACTIVATED** 🎉\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👋 Hey {user_name},\n"
+                    f"Thank you for supporting 🖤 **Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝**!\n"
+                    f"Your account has been upgraded to Premium status. Enjoy! 👑\n\n"
+                    f"⚡ **BENEFITS ACTIVATED:**\n"
+                    f"  • Max download & upload speed 🚀\n"
+                    f"  • Access to restricted content bypass 🔥\n"
+                    f"  • Custom thumbnail support 📸\n"
+                    f"  • Parallel transmission chunks ⚡\n\n"
+                    f"📈 **YOUR PLAN DETAILS:**\n"
+                    f"  • **Duration:** `{time_val}`\n"
+                    f"  • **Expiry Time:** `{expiry_str_in_ist}` (IST)\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🚀 _Enjoy the maximum speed & limit!_"
+                ), 
+                disable_web_page_preview=True              
+            )
         except Exception:
             pass
-
-        time_val = message.command[2]+" "+message.command[3]
-        seconds = await get_seconds(time_val)
-        if seconds > 0:
-            expiry_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds)  
-            await plans_db.add_premium(user_id, expiry_time)  
-            data = await plans_db.check_premium(user_id)
-            expiry = data.get("expire_date")   
-            expiry_str_in_ist = expiry.astimezone(pytz.timezone("Asia/Kolkata")).strftime("%d-%m-%Y %I:%M:%S %p")         
-            await message.reply_text(
-                f"✨ 🖤 **𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘** 🖤 ✨\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🌟 **PREMIUM ACCESS ACTIVATED** 🌟\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 **User:** {user_mention}\n"
-                f"🆔 **ID:** `{user_id}`\n"
-                f"⏳ **Duration:** `{time_val}`\n"
-                f"📅 **Start:** `{current_time}` (IST)\n"
-                f"⌛ **Expiry:** `{expiry_str_in_ist}` (IST)\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"✨ _Powered by CHOSEN ONE ⚝_", 
-                disable_web_page_preview=True
-            )
-            try:
-                await client.send_message(
-                    chat_id=user_id,
-                    text=(
-                        f"🎉 **CONGRATULATIONS! PREMIUM ACTIVATED** 🎉\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"👋 Hey {user_name},\n"
-                        f"Thank you for supporting 🖤 **CHOSEN ONE ⚝**!\n"
-                        f"Your account has been upgraded to Premium status. Enjoy! 👑\n\n"
-                        f"⚡ **BENEFITS ACTIVATED:**\n"
-                        f"  • Max download & upload speed 🚀\n"
-                        f"  • Access to restricted content bypass 🔥\n"
-                        f"  • Custom thumbnail support 📸\n"
-                        f"  • Parallel transmission chunks ⚡\n\n"
-                        f"📈 **YOUR PLAN DETAILS:**\n"
-                        f"  • **Duration:** `{time_val}`\n"
-                        f"  • **Expiry Time:** `{expiry_str_in_ist}` (IST)\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🚀 _Enjoy the maximum speed & limit!_"
-                    ), 
-                    disable_web_page_preview=True              
-                )
-            except Exception:
-                pass
-                    
-        else:
-            await message.reply_text("Invalid time format. Please use '1 day for days', '1 hour for hours', or '1 min for minutes', or '1 month for months' or '1 year for year'")
     else:
-        await message.reply_text("Usage : /add user_id time (e.g., '1 day for days', '1 hour for hours', or '1 min for minutes', or '1 month for months' or '1 year for year')")
+        await message.reply_text("❌ **Invalid time format.** Use e.g. '1 day', '1 hour', '1 month', or 'lifetime'.")
 
 
 @app.on_message(filters.command("transfer"))
@@ -315,7 +332,7 @@ async def transfer_premium(client, message):
             current_time = time_zone.strftime("%d-%m-%Y %I:%M:%S %p")
             
             await message.reply_text(
-                f"🔄 🖤 **𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘** 🖤 🔄\n"
+                f"🔄 🖤 **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦** 🖤 🔄\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"🔄 **PREMIUM PLAN TRANSFERRED**\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -373,7 +390,7 @@ async def premium_remover():
                                 f"⚠️ **NOTICE: PREMIUM EXPIRED** ⚠️\n"
                                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                                 f"Hello {name},\n"
-                                f"Your subscription for 🖤 **CHOSEN ONE ⚝** has expired.\n\n"
+                                f"Your subscription for 🖤 **Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝** has expired.\n\n"
                                 f"Thank you for being with us! If you wish to renew, please contact the owner.\n"
                                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                             )

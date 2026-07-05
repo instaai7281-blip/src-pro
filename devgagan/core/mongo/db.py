@@ -66,9 +66,9 @@ async def remove_clean_words(user_id, words_to_remove):
 async def set_channel(user_id, chat_id):
     data = await get_data(user_id)
     if data and data.get("_id"):
-        await db.update_one({"_id": user_id}, {"$set": {"chat_id": chat_id}})
+        await db.update_one({"_id": user_id}, {"$set": {"chat_id": chat_id, "target_chat_id": chat_id}})
     else:
-        await db.insert_one({"_id": user_id, "chat_id": chat_id})
+        await db.insert_one({"_id": user_id, "chat_id": chat_id, "target_chat_id": chat_id})
 async def all_words_remove(user_id):
     await db.update_one({"_id": user_id}, {"$set": {"clean_words": None}})
 async def remove_thumbnail(user_id):
@@ -81,7 +81,7 @@ async def remove_replace(user_id):
 async def remove_session(user_id):
     await db.update_one({"_id": user_id}, {"$set": {"session": None}})
 async def remove_channel(user_id):
-    await db.update_one({"_id": user_id}, {"$set": {"chat_id": None}})
+    await db.update_one({"_id": user_id}, {"$set": {"chat_id": None, "target_chat_id": None}})
 async def set_filter(user_id, media_type, status):
     data = await get_data(user_id)
     if data and data.get("_id"):
@@ -104,6 +104,29 @@ async def update_data(user_id, update_dict):
         update_dict["_id"] = user_id
         await db.insert_one(update_dict)
 
+mappings_db = mongo.user_data.forward_mappings
+
+async def add_forward_mapping(user_id, target_chat_id):
+    await mappings_db.update_one(
+        {"_id": user_id},
+        {"$set": {"target_chat_id": target_chat_id}},
+        upsert=True
+    )
+
+async def remove_forward_mapping(user_id):
+    await mappings_db.delete_one({"_id": user_id})
+
+async def get_forward_mapping(user_id):
+    doc = await mappings_db.find_one({"_id": user_id})
+    return doc.get("target_chat_id") if doc else None
+
+async def get_all_forward_mappings():
+    cursor = mappings_db.find({})
+    results = []
+    async for doc in cursor:
+        results.append((doc["_id"], doc["target_chat_id"]))
+    return results
+
 async def load_all_thumbnails(thumbnail_dir):
     try:
         import os
@@ -120,4 +143,27 @@ async def load_all_thumbnails(thumbnail_dir):
         print(f"[INFO] Restored {count} custom thumbnails from MongoDB.")
     except Exception as e:
         print(f"[ERROR] Failed to restore custom thumbnails: {e}")
- 
+
+# Collection for global configuration settings
+config_db = mongo.user_data.global_config
+
+async def get_broadcast_config():
+    doc = await config_db.find_one({"_id": "scheduled_broadcast"})
+    if not doc:
+        default = {
+            "_id": "scheduled_broadcast",
+            "message": "Hello! This is a scheduled broadcast message.",
+            "interval_mins": 60,
+            "is_active": False,
+            "last_run": None
+        }
+        await config_db.insert_one(default)
+        return default
+    return doc
+
+async def update_broadcast_config(update_dict):
+    await config_db.update_one(
+        {"_id": "scheduled_broadcast"},
+        {"$set": update_dict},
+        upsert=True
+    )

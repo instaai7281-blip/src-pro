@@ -72,6 +72,47 @@ async def daily_plans_broadcast_task():
     except Exception as e:
         print(f"[DAILY BROADCAST] Error: {e}")
 
+async def schedule_broadcast_task():
+    import datetime
+    from devgagan import app
+    from devgagan.core.mongo.db import get_broadcast_config, update_broadcast_config
+    from pyrogram.enums import ChatType
+    
+    while True:
+        try:
+            config = await get_broadcast_config()
+            if config and config.get("is_active"):
+                interval_mins = config.get("interval_mins", 60)
+                last_run = config.get("last_run")
+                
+                should_run = False
+                now = datetime.datetime.now()
+                if not last_run:
+                    should_run = True
+                else:
+                    elapsed = (now - last_run).total_seconds() / 60.0
+                    if elapsed >= interval_mins:
+                        should_run = True
+                        
+                if should_run:
+                    await update_broadcast_config({"last_run": now})
+                    message_text = config.get("message")
+                    if message_text:
+                        sent_count = 0
+                        async for dialog in app.get_dialogs():
+                            chat = dialog.chat
+                            if chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
+                                try:
+                                    await app.send_message(chat.id, message_text)
+                                    sent_count += 1
+                                    await asyncio.sleep(0.5)
+                                except Exception as e:
+                                    print(f"Failed to send broadcast to {chat.id}: {e}")
+                        print(f"[AUTO BROADCAST] Sent broadcast message to {sent_count} chats.")
+        except Exception as e:
+            print(f"[AUTO BROADCAST] Error in scheduler: {e}")
+        await asyncio.sleep(60)
+
 async def schedule_daily_plans_broadcast():
     import datetime
     last_sent_date = None
@@ -128,7 +169,8 @@ License: MIT License
 
     asyncio.create_task(schedule_expiry_check())
     asyncio.create_task(schedule_daily_plans_broadcast())
-    print("Auto removal and daily plans broadcast started ...")
+    asyncio.create_task(schedule_broadcast_task())
+    print("Auto removal, daily plans, and scheduled broadcasts started ...")
     await idle()
     print("Bot stopped...")
 

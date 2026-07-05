@@ -69,6 +69,44 @@ async def set_interval(user_id, interval_minutes=45):
     interval_set[user_id] = now + timedelta(minutes=interval_minutes)
     
 
+import re
+
+@app.on_message(filters.private & (filters.forwarded | ~filters.text))
+async def handle_forwarded_or_media(client, message):
+    user_id = message.from_user.id if message.from_user else message.chat.id
+    from devgagan.core.func import chk_user
+    if await chk_user(message, user_id) == 1:
+        return
+
+    if message.text and re.search(r'https?://(?:www\.)?(?:t\.me|telegram\.me|telegram\.dog)', message.text):
+        return
+
+    from devgagan.core.get_func import get_target_chat_id, extract_message_topic_id
+    target_chat_id = get_target_chat_id(user_id)
+    if target_chat_id == user_id:
+        await message.reply_text("📢 **Please set a destination Chat ID first in /settings or via button!**")
+        return
+
+    topic_id = None
+    if '/' in str(target_chat_id):
+        try:
+            target_chat_id, topic_id = map(int, str(target_chat_id).split('/', 1))
+        except ValueError:
+            pass
+    else:
+        topic_id = extract_message_topic_id(message)
+
+    msg = await message.reply_text("🔄 **Forwarding/Copying message...**")
+    try:
+        await message.copy(
+            chat_id=target_chat_id,
+            message_thread_id=topic_id
+        )
+        await msg.edit("✅ **Message successfully forwarded/copied to destination!**")
+    except Exception as e:
+        await msg.edit(f"❌ **Failed to forward:** `{e}`")
+
+
 @app.on_message(
     filters.regex(r'https?://(?:www\.)?(?:t\.me|telegram\.me|telegram\.dog)/[^\s]+|tg://openmessage\?(?:user_id|chat_id)=-?\d+&message_id=\d+')
     & filters.private

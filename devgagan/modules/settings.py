@@ -42,6 +42,8 @@ def get_filters_keyboard(user_data):
          InlineKeyboardButton(f"{toggle_text('document')} Document", callback_data="toggle_document")],
         [InlineKeyboardButton(f"{toggle_text('audio')} Audio", callback_data="toggle_audio"),
          InlineKeyboardButton(f"{toggle_text('photo')} Photo", callback_data="toggle_photo")],
+        [InlineKeyboardButton(f"{toggle_text('sticker')} Sticker", callback_data="toggle_sticker"),
+         InlineKeyboardButton(f"{toggle_text('html')} HTML", callback_data="toggle_html")],
         [InlineKeyboardButton(f"{toggle_text('text')} Text", callback_data="toggle_text"),
          InlineKeyboardButton("🔄 Reset", callback_data="reset_filters")],
         [InlineKeyboardButton("🔙 Back to Menu", callback_data="back_to_main")]
@@ -89,7 +91,14 @@ def get_cleaning_keyboard(user_data):
 def get_tag_keyboard(user_id):
     current_tag = get_user_branding_tag(user_id)
     custom_tags = get_user_custom_tags(user_id)
+    
+    from devgagan.core.get_func import load_user_data
+    is_keep_original = load_user_data(user_id, "keep_original_caption", False)
+    
     buttons = []
+    
+    # 0) Raw Caption Toggle
+    buttons.append([InlineKeyboardButton(f"🔗 Raw Caption (No Clean): {'ON ✅' if is_keep_original else 'OFF ❌'}", callback_data="toggle_keep_original")])
     
     # 1) Stolen Happiness Preset
     is_sh_selected = (current_tag == "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
@@ -167,6 +176,7 @@ async def main_nav_callback(client, callback_query: CallbackQuery):
         
         await callback_query.message.edit_text(text, reply_markup=get_cleaning_keyboard(user_data))
     elif data == "settings_tag":
+        current_tag = user_data.get("branding_tag", "🖤 Sᴛꪮʟᴇɴ Hᴀᴘപ⚝")
         current_tag = user_data.get("branding_tag", "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
         preview_text = (
             f"🏷️ **Branding Tag Settings**\n"
@@ -286,17 +296,30 @@ async def chatid_actions_callback(client, callback_query: CallbackQuery):
         await callback_query.answer("Auto-forward reset to DM", show_alert=True)
     elif data == "set_new_chatid":
         await callback_query.message.delete()
-        ask = await client.ask(user_id, "📢 **Send the Channel or Group ID.**\n\n> Example: `-100123456789` or forward a message from that chat.\n> Send /cancel to abort.")
+        ask = await client.ask(
+            user_id,
+            "📢 **Send the Channel, Group ID, or Message Link.**\n\n"
+            "> **Examples:**\n"
+            "> • `-100123456789` (Plain ID)\n"
+            "> • `https://t.me/c/123456789/430/431` (Message link with Topic ID)\n\n"
+            "> Send /cancel to abort."
+        )
         
         if ask.text == "/cancel":
             await ask.reply("Action cancelled.")
         else:
+            val = ask.text.strip()
+            from devgagan.core.get_func import parse_target_chat
+            parsed_chat = parse_target_chat(val)
+            
+            chat_to_save = parsed_chat
             try:
-                chat_id = int(ask.text)
-                await db.set_channel(user_id, chat_id)
-                await ask.reply(f"✅ **Auto-forward set to:** `{chat_id}`")
+                chat_to_save = int(parsed_chat)
             except ValueError:
-                await ask.reply("❌ **Invalid Chat ID format. Make sure it's a number starting with -100.**")
+                pass
+                
+            await db.set_channel(user_id, chat_to_save)
+            await ask.reply(f"✅ **Auto-forward set to:** `{chat_to_save}`")
         
         await asyncio.sleep(0.5)
         await settings_command(client, ask)
@@ -346,12 +369,19 @@ async def cleaning_actions_callback(client, callback_query: CallbackQuery):
 
 # ────── Branding Tag Actions ──────
 
-@app.on_callback_query(filters.regex(r"^(set_tag_stolenhappiness|set_tag_add|set_tag_select_\d+|set_tag_delete_\d+)$"))
+@app.on_callback_query(filters.regex(r"^(set_tag_stolenhappiness|set_tag_add|set_tag_select_\d+|set_tag_delete_\d+|toggle_keep_original)$"))
 async def tag_actions_callback(client, callback_query: CallbackQuery):
     data = callback_query.data
     user_id = callback_query.from_user.id
 
-    if data == "set_tag_stolenhappiness":
+    if data == "toggle_keep_original":
+        from devgagan.core.get_func import save_user_data, load_user_data
+        current_val = load_user_data(user_id, "keep_original_caption", False)
+        new_val = not current_val
+        save_user_data(user_id, "keep_original_caption", new_val)
+        await callback_query.answer(f"Raw Caption Mode: {'Enabled' if new_val else 'Disabled'}")
+
+    elif data == "set_tag_stolenhappiness":
         set_user_branding_tag(user_id, "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝")
         await callback_query.answer("Branding tag set to Stolen Happiness Preset")
         
@@ -408,7 +438,9 @@ async def tag_actions_callback(client, callback_query: CallbackQuery):
 
 # ────── Filter & Reset Actions ──────
 
-@app.on_callback_query(filters.regex(r"^toggle_(video|document|audio|photo|text)$"))
+@app.on_message(filters.private)
+# Note: we need to adjust regex below to support sticker and html
+@app.on_callback_query(filters.regex(r"^toggle_(video|document|audio|photo|text|sticker|html)$"))
 async def toggle_filter(client, callback_query: CallbackQuery):
     media_type = callback_query.data.split("_")[1]
     user_id = callback_query.from_user.id
@@ -428,7 +460,7 @@ async def reset_actions_callback(client, callback_query: CallbackQuery):
     data = callback_query.data
     
     if data == "reset_filters":
-        for media_type in ["video", "document", "audio", "photo", "text"]:
+        for media_type in ["video", "document", "audio", "photo", "text", "sticker", "html"]:
             await db.set_filter(user_id, media_type, True)
         await callback_query.answer("Filters reset")
     elif data == "reset_all_settings":

@@ -21,7 +21,24 @@ from devgagan.core.func import *
 from pyrogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Message, BotCommand
 from pyrogram.raw.functions.bots import SetBotInfo
 from pyrogram.raw.types import InputUserSelf
- 
+
+from pyrogram.enums import ChatType
+
+@app.on_message(filters.private, group=-1)
+async def restrict_unauthorized_users(client, message: Message):
+    user_id = message.from_user.id if message.from_user else message.chat.id
+    from devgagan.core.func import chk_user
+    if await chk_user(message, user_id) == 1:
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("💬 Contact Owner", url="https://t.me/CHOSEN_ONEx_bot")
+        ]])
+        await message.reply_text(
+            "❌ **Access Denied:** Please contact @CHOSEN_ONEx_bot to get access.",
+            reply_markup=markup
+        )
+        message.stop_propagation()
+
+
 @app.on_message(filters.command("set"))
 async def set(_, message):
     if message.from_user.id not in OWNER_ID:
@@ -189,7 +206,7 @@ async def terms(client, message):
 @app.on_message(filters.command("plans") & filters.private)
 async def plan(client, message):
     plan_text = (
-        "⚡ **𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘 𝗣𝗥𝗘𝗠𝗜𝗨𝗠** ⚡\n"
+        "⚡ **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦 𝗣𝗥𝗘𝗠𝗜𝗨𝗠** ⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "🚀 **PREMIUM BENEFITS:**\n"
         "✦ **No Verification:** No captcha or ads ⏳\n"
@@ -219,7 +236,7 @@ async def plan(client, message):
 @app.on_callback_query(filters.regex("see_plan"))
 async def see_plan(client, callback_query):
     plan_text = (
-        "⚡ **𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘 𝗣𝗥𝗘𝗠𝗜𝗨𝗠** ⚡\n"
+        "⚡ **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦 𝗣𝗥𝗘𝗠𝗜𝗨𝗠** ⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "💰 **Pricing & Upgrade Details:**\n"
         "• **7 Days:** ₹30 | $0.50 USDT\n"
