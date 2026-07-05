@@ -3,7 +3,7 @@ from devgagan import sex
 from telethon import events, functions
 from telethon.tl.types import InputRichMessageMarkdown
 
-SIGNATURE = "\n\n---\n🛡️ **Owner:** [𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡Ｅ ⚝](https://t.me/CHOSEN_ONEx_bot)"
+SIGNATURE = "\n\n---\n🛡️ **Owner:** [𝗖𝗛𝗢𝗦𝗘𝗡 𝗢𝗡𝗘 ⚝](https://t.me/CHOSEN_ONEx_bot)"
 
 START_TEXT = r"""
 # 🎓 Ultimate Study & Math Reference Bot
@@ -196,25 +196,41 @@ Applying the exact same **+3 shift** logic to each letter of **"SMART"**:
 > **"SMART"** ➔ **"VpdUW"**""" + SIGNATURE
 
 CHART_TEXT = r"""
-# 🔠 Alphabet Position Reference Chart
+# 🔠 Alphabet Position & Opposites Reference Chart
 
-Use this grid reference chart for solving **Coding-Decoding** problems:
+### (1) English alphabets Position from left to right :-
 
-| Letter | Position | Letter | Position |
-|:---:|:---:|:---:|:---:|
-| **A** | `1` | **N** | `14` |
-| **B** | `2` | **O** | `15` |
-| **C** | `3` | **P** | `16` |
-| **D** | `4` | **Q** | `17` |
-| **E** | `5` | **R** | `18` |
-| **F** | `6` | **S** | `19` |
-| **G** | `7` | **T** | `20` |
-| **H** | `8` | **U** | `21` |
-| **I** | `9` | **V** | `22` |
-| **J** | `10` | **W** | `23` |
-| **K** | `11` | **X** | `24` |
-| **L** | `12` | **Y** | `25` |
-| **M** | `13` | **Z** | `26` |
+| **A** | **B** | **C** | **D** | **E** | **F** | **G** | **H** | **I** | **J** | **K** | **L** | **M** |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `1` | `2` | `3` | `4` | `5` | `6` | `7` | `8` | `9` | `10` | `11` | `12` | `13` |
+
+| **N** | **O** | **P** | **Q** | **R** | **S** | **T** | **U** | **V** | **W** | **X** | **Y** | **Z** |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `14` | `15` | `16` | `17` | `18` | `19` | `20` | `21` | `22` | `23` | `24` | `25` | `26` |
+
+---
+
+### (2) English alphabets position from Right to left :-
+
+| **Z** | **Y** | **X** | **W** | **V** | **U** | **T** | **S** | **R** | **Q** | **P** | **O** | **N** |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `1` | `2` | `3` | `4` | `5` | `6` | `7` | `8` | `9` | `10` | `11` | `12` | `13` |
+
+| **M** | **L** | **K** | **J** | **I** | **H** | **G** | **F** | **E** | **D** | **C** | **B** | **A** |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `14` | `15` | `16` | `17` | `18` | `19` | `20` | `21` | `22` | `23` | `24` | `25` | `26` |
+
+---
+
+### (3) Series of opposite English Alphabets :-
+
+| **A** | **B** | **C** | **D** | **E** | **F** | **G** | **H** | **I** | **J** | **K** | **L** | **M** |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Z** | **Y** | **X** | **W** | **V** | **U** | **T** | **S** | **R** | **Q** | **P** | **O** | **N** |
+
+| **N** | **O** | **P** | **Q** | **R** | **S** | **T** | **U** | **V** | **W** | **X** | **Y** | **Z** |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **M** | **L** | **K** | **J** | **I** | **H** | **G** | **F** | **E** | **D** | **C** | **B** | **A** |
 
 > **Tip:** Memorizing this chart or writing it down quickly in exams will save you valuable time!""" + SIGNATURE
 
@@ -289,3 +305,33 @@ async def chart_handler(e):
         message="Alphabet Position Reference Chart",
         rich_message=InputRichMessageMarkdown(markdown=CHART_TEXT),
     ))
+
+@sex.on(events.NewMessage(pattern=r"^/myrich(?:\s+([\s\S]*))?$"))
+async def myrich_handler(e):
+    chat = await e.get_input_chat()
+    text = e.pattern_match.group(1)
+    
+    if not text or not text.strip():
+        help_text = (
+            "💡 **How to use `/myrich`:**\n\n"
+            "Send `/myrich` followed by your markdown text to generate a rich message.\n\n"
+            "**Example:**\n"
+            "```\n"
+            "/myrich # 📅 My Timetable\n"
+            "| Day | Subject |\n"
+            "|:---:|:---:|\n"
+            "| Mon | Physics |\n"
+            "| Tue | Math |\n"
+            "```"
+        )
+        await sex.send_message(chat, help_text)
+        return
+        
+    try:
+        await sex(functions.messages.SendMessageRequest(
+            peer=chat,
+            message="Rich Message Preview",
+            rich_message=InputRichMessageMarkdown(markdown=text.strip()),
+        ))
+    except Exception as ex:
+        await sex.send_message(chat, f"❌ **Error parsing markdown:** `{str(ex)}`")
