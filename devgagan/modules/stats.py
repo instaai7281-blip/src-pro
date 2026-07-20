@@ -32,16 +32,35 @@ async def id_command(client, message: Message):
     reply = message.reply_to_message
 
     user = reply.from_user if reply else message.from_user
-    user_id = user.id if user else "N/A"
+    
+    if user:
+        user_id = user.id
+        first_name = user.first_name or ""
+        last_name = user.last_name or ""
+        full_name = f"{first_name} {last_name}".strip() or "N/A"
+        username = f"@{user.username}" if user.username else "N/A"
+    else:
+        user_id = "N/A"
+        full_name = "N/A"
+        username = "N/A"
+        
     chat_id = message.chat.id
+    chat_title = message.chat.title or message.chat.first_name or "Private Chat"
+    chat_type = str(message.chat.type).split('.')[-1].replace('_', ' ').title()
     msg_id = message.id
     reply_id = reply.message_id if reply else "N/A"
 
     text = (
-        f"👤 User ID: `{user_id}`\n"
-        f"💬 Chat ID: `{chat_id}`\n"
-        f"📎 Message ID: `{msg_id}`\n"
-        f"🔁 Reply to Msg ID: `{reply_id}`"
+        f"👤 **User Details:**\n"
+        f"• **Name:** {full_name}\n"
+        f"• **Username:** {username}\n"
+        f"• **User ID:** `{user_id}`\n\n"
+        f"💬 **Chat Details:**\n"
+        f"• **Title:** {chat_title}\n"
+        f"• **Type:** {chat_type}\n"
+        f"• **Chat ID:** `{chat_id}`\n\n"
+        f"📎 **Message ID:** `{msg_id}`\n"
+        f"🔁 **Reply to Msg ID:** `{reply_id}`"
     )
 
     await message.reply_text(text, quote=True)
@@ -108,54 +127,234 @@ from pyrogram.types import (
     CallbackQuery
 )
 
+import datetime
+import pytz
+from devgagan.core.mongo.plans_db import check_premium, add_premium, remove_premium
+from pyrogram.enums import ParseMode
+
+# PAGINATION CONFIG
+PREMIUM_USERS_PER_PAGE = 8
+
 # /getusers command — OWNER only, private chat
 @app.on_message(filters.command("getusers") & filters.user(OWNER_ID) & filters.private)
 async def getusers_paginated(client, message: Message):
-    users = await get_all_registered_users()
-    if not users:
-        return await message.reply("🚫 No users found in the database.")
-    await show_users_page(client, message.chat.id, users, page=0)
+    await show_premium_users_page(client, message.chat.id, page=0)
 
 
-# Pagination callback handler
-@app.on_callback_query(filters.regex(r"^users_page_(\d+)$") & filters.user(OWNER_ID))
-async def paginate_users_callback(client, query: CallbackQuery):
-    page = int(query.matches[0].group(1))
-    users = await get_all_registered_users()
-    await show_users_page(client, query.message.chat.id, users, page, query)
+# Helper: Show paginated list of premium users
+async def show_premium_users_page(client, chat_id, page=0, message_to_edit=None):
+    p_users = await premium_users()
+    if not p_users:
+        text = "👑 **Active Premium Users**:\n\nNo active premium users found."
+        if message_to_edit:
+            await message_to_edit.edit_text(text)
+        else:
+            await client.send_message(chat_id, text)
+        return
 
+    total_users = len(p_users)
+    start_idx = page * PREMIUM_USERS_PER_PAGE
+    end_idx = start_idx + PREMIUM_USERS_PER_PAGE
+    chunk = p_users[start_idx:end_idx]
 
-# Helper: show paginated user list
-async def show_users_page(client, chat_id, users, page=0, query=None):
-    users_per_page = 20
-    start = page * users_per_page
-    end = start + users_per_page
-    user_chunk = users[start:end]
+    text = f"👑 **Active Premium Users** (Page {page + 1} of {((total_users - 1) // PREMIUM_USERS_PER_PAGE) + 1}):\n"
+    text += f"Total Premium Members: `{total_users}`\n\n"
 
-    lines = []
-    for uid in user_chunk:
+    buttons_row = []
+    # Build list text and buttons
+    for idx, uid in enumerate(chunk):
+        num = start_idx + idx + 1
         try:
             user = await client.get_users(uid)
-            name = f"{user.first_name or ''} {user.last_name or ''}".strip() or str(uid)
-            name = name.replace('[', '').replace(']', '')  # Avoid markdown conflicts
-            mention = f"[`{name}`](tg://user?id={uid})"
+            name = f"{user.first_name or ''}".strip() or str(uid)
+            name = name.replace('[', '').replace(']', '')
+            mention = f"[{name}](tg://user?id={uid})"
         except:
-            mention = f"[`{uid}`](tg://user?id={uid})"
-        lines.append(f"• {mention} — `{uid}`")
+            mention = f"User (`{uid}`)"
+        
+        # Expiry details
+        data = await check_premium(uid)
+        expiry_str = "N/A"
+        if data and data.get("expire_date"):
+            expiry = data.get("expire_date")
+            expiry_ist = expiry.astimezone(pytz.timezone("Asia/Kolkata"))
+            expiry_str = expiry_ist.strftime("%d-%m-%Y %I:%M %p")
+            
+        text += f"{num}. 👤 {mention}\n   ├ Expiry: `{expiry_str}`\n   └ ID: `{uid}`\n\n"
+        # Add a management button for this specific user
+        buttons_row.append(InlineKeyboardButton(f"{num}", callback_data=f"manage_p_{uid}_{page}"))
 
-    text = f"👥 **Users {start+1} - {min(end, len(users))} of {len(users)}**:\n\n" + "\n".join(lines)
+    # Layout management buttons (max 4 per row)
+    keyboard = []
+    chunked_buttons = [buttons_row[i:i + 4] for i in range(0, len(buttons_row), 4)]
+    keyboard.extend(chunked_buttons)
 
-    # Pagination buttons
-    buttons = []
-    if start > 0:
-        buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"users_page_{page - 1}"))
-    if end < len(users):
-        buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"users_page_{page + 1}"))
+    # Page navigation buttons
+    nav_buttons = []
+    if start_idx > 0:
+        nav_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"p_page_{page - 1}"))
+    if end_idx < total_users:
+        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"p_page_{page + 1}"))
+    
+    if nav_buttons:
+        keyboard.append(nav_buttons)
 
-    markup = InlineKeyboardMarkup([buttons]) if buttons else None
+    keyboard.append([InlineKeyboardButton("🔄 Refresh List", callback_data=f"p_page_{page}")])
 
-    if query:
-        await query.message.edit_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
-        await query.answer()
+    markup = InlineKeyboardMarkup(keyboard)
+
+    if message_to_edit:
+        await message_to_edit.edit_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
     else:
         await client.send_message(chat_id, text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+
+
+# Callback Query Handler for Premium Users Page
+@app.on_callback_query(filters.regex(r"^p_page_(\d+)$") & filters.user(OWNER_ID))
+async def handle_p_page_callback(client, query: CallbackQuery):
+    page = int(query.matches[0].group(1))
+    await show_premium_users_page(client, query.message.chat.id, page, query.message)
+    await query.answer()
+
+
+# Callback Query Handler to Manage a Specific Premium User
+@app.on_callback_query(filters.regex(r"^manage_p_(\d+)_(\d+)$") & filters.user(OWNER_ID))
+async def manage_p_user_callback(client, query: CallbackQuery):
+    user_id = int(query.matches[0].group(1))
+    page = int(query.matches[0].group(2))
+    
+    try:
+        user = await client.get_users(user_id)
+        mention = user.mention
+    except:
+        mention = f"User (`{user_id}`)"
+
+    data = await check_premium(user_id)
+    if not data or not data.get("expire_date"):
+        await query.answer("❌ User is no longer premium or not found.", show_alert=True)
+        await show_premium_users_page(client, query.message.chat.id, page, query.message)
+        return
+
+    expiry = data.get("expire_date")
+    expiry_ist = expiry.astimezone(pytz.timezone("Asia/Kolkata"))
+    expiry_str_in_ist = expiry_ist.strftime("%d-%m-%Y %I:%M:%S %p")            
+    
+    current_time = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
+    time_left = expiry_ist - current_time
+    
+    if time_left.total_seconds() > 0:
+        days = time_left.days
+        hours, remainder = divmod(time_left.seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        time_left_str = f"{days}d, {hours}h, {minutes}m"
+    else:
+        time_left_str = "Expired"
+
+    text = (
+        f"👑 **Manage Premium User**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 **User:** {mention}\n"
+        f"🆔 **ID:** `{user_id}`\n"
+        f"⏰ **Time Left:** `{time_left_str}`\n"
+        f"⌛ **Expiry:** `{expiry_str_in_ist}` (IST)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+    buttons = [
+        [
+            InlineKeyboardButton("➕ Extend 1 Day", callback_data=f"extend_p_{user_id}_1_{page}"),
+            InlineKeyboardButton("➕ Extend 7 Days", callback_data=f"extend_p_{user_id}_7_{page}")
+        ],
+        [
+            InlineKeyboardButton("➕ Extend 30 Days", callback_data=f"extend_p_{user_id}_30_{page}")
+        ],
+        [
+            InlineKeyboardButton("🗑️ Revoke Premium", callback_data=f"revoke_p_{user_id}_{page}")
+        ],
+        [
+            InlineKeyboardButton("◀️ Back to List", callback_data=f"p_page_{page}")
+        ]
+    ]
+
+    await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.MARKDOWN)
+    await query.answer()
+
+
+# Callback Query Handler to Extend Premium
+@app.on_callback_query(filters.regex(r"^extend_p_(\d+)_(\d+)_(\d+)$") & filters.user(OWNER_ID))
+async def extend_p_user_callback(client, query: CallbackQuery):
+    user_id = int(query.matches[0].group(1))
+    days_to_add = int(query.matches[0].group(2))
+    page = int(query.matches[0].group(3))
+
+    data = await check_premium(user_id)
+    current_expiry = None
+    if data and data.get("expire_date"):
+        current_expiry = data.get("expire_date")
+
+    now = datetime.datetime.now()
+    if current_expiry and current_expiry > now:
+        new_expiry = current_expiry + datetime.timedelta(days=days_to_add)
+    else:
+        new_expiry = now + datetime.timedelta(days=days_to_add)
+
+    await add_premium(user_id, new_expiry)
+    await query.answer(f"✅ Extended by {days_to_add} days!", show_alert=True)
+    
+    # Re-trigger management menu to show updated expiry
+    class DummyQuery:
+        def __init__(self, q):
+            self.message = q.message
+            self.from_user = q.from_user
+            self.data = q.data
+            self.matches = q.matches
+        async def answer(self, *args, **kwargs):
+            pass
+
+    class Match:
+        def __init__(self, u, p):
+            self.u = str(u)
+            self.p = str(p)
+        def group(self, idx):
+            return self.u if idx == 1 else self.p
+
+    dummy = DummyQuery(query)
+    dummy.matches = [Match(user_id, page)]
+    await manage_p_user_callback(client, dummy)
+
+
+# Callback Query Handler to Revoke Premium
+@app.on_callback_query(filters.regex(r"^revoke_p_(\d+)_(\d+)$") & filters.user(OWNER_ID))
+async def revoke_p_user_callback(client, query: CallbackQuery):
+    user_id = int(query.matches[0].group(1))
+    page = int(query.matches[0].group(2))
+
+    await remove_premium(user_id)
+    
+    # Terminate active token session if exists
+    try:
+        from motor.motor_asyncio import AsyncIOMotorClient
+        from config import MONGO_DB
+        tclient = AsyncIOMotorClient(MONGO_DB)
+        tdb = tclient["telegram_bot"]
+        await tdb["tokens"].delete_one({"user_id": user_id})
+    except Exception:
+        pass
+
+    try:
+        await client.send_message(
+            chat_id=user_id,
+            text=(
+                f"⚠️ **NOTICE: PREMIUM EXPIRED/TERMINATED** ⚠️\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"Hello, your premium subscription or token session for \n"
+                f"🖤 **Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝** has been terminated or expired.\n\n"
+                f"💬 If you think this is a mistake or wish to renew, please contact the owner.\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+        )
+    except Exception:
+        pass
+
+    await query.answer("🗑️ Premium revoked!", show_alert=True)
+    await show_premium_users_page(client, query.message.chat.id, page, query.message)

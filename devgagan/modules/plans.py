@@ -200,93 +200,76 @@ async def get_premium(client, message):
 
 @app.on_message(filters.command("add") & filters.user(OWNER_ID))
 async def give_premium_cmd_handler(client, message):
-    parts = message.command
-    if len(parts) < 2:
-        await message.reply_text(
-            "📝 **Add Premium / Approve User Usage:**\n\n"
-            "• `/add <user_id>` (Approve lifetime / 99 years)\n"
-            "• `/add <user_id> lifetime` (Approve lifetime)\n"
-            "• `/add <user_id> <number> <days/hours/months>` (Approve specific duration)\n\n"
-            "**Examples:**\n"
-            "• `/add 868659158`\n"
-            "• `/add 868659158 30 days`"
-        )
-        return
-
-    try:
-        user_id = int(parts[1])
-    except ValueError:
-        await message.reply_text("❌ **Invalid user ID.** Please provide a numeric ID.")
-        return
-
-    time_zone = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
-    current_time = time_zone.strftime("%d-%m-%Y %I:%M:%S %p")
-
-    user_mention = f"User (`{user_id}`)"
-    user_name = "User"
-    try:
-        user = await client.get_users(user_id)
-        if user:
-            user_mention = user.mention
-            user_name = user.mention
-    except Exception:
-        pass
-
-    if len(parts) == 2 or (len(parts) == 3 and parts[2].lower() == "lifetime"):
-        time_val = "99 years"
-    elif len(parts) == 4:
-        time_val = parts[2] + " " + parts[3]
-    else:
-        await message.reply_text("❌ **Invalid format.** Use `/add <user_id>` or `/add <user_id> <number> <unit>`.")
-        return
-
-    seconds = await get_seconds(time_val)
-    if seconds > 0:
-        expiry_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds)  
-        await plans_db.add_premium(user_id, expiry_time)  
-        data = await plans_db.check_premium(user_id)
-        expiry = data.get("expire_date")   
-        expiry_str_in_ist = expiry.astimezone(pytz.timezone("Asia/Kolkata")).strftime("%d-%m-%Y %I:%M:%S %p")         
-        await message.reply_text(
-            f"✨ 🖤 **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦** 🖤 ✨\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🌟 **PREMIUM ACCESS ACTIVATED** 🌟\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 **User:** {user_mention}\n"
-            f"🆔 **ID:** `{user_id}`\n"
-            f"⏳ **Duration:** `{time_val}`\n"
-            f"📅 **Start:** `{current_time}` (IST)\n"
-            f"⌛ **Expiry:** `{expiry_str_in_ist}` (IST)\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"✨ _Powered by CHOSEN ONE ⚝_", 
-            disable_web_page_preview=True
-        )
+    if len(message.command) == 4:
+        time_zone = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
+        current_time = time_zone.strftime("%d-%m-%Y %I:%M:%S %p")
         try:
-            await client.send_message(
-                chat_id=user_id,
-                text=(
-                    f"🎉 **CONGRATULATIONS! PREMIUM ACTIVATED** 🎉\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"👋 Hey {user_name},\n"
-                    f"Thank you for supporting 🖤 **Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝**!\n"
-                    f"Your account has been upgraded to Premium status. Enjoy! 👑\n\n"
-                    f"⚡ **BENEFITS ACTIVATED:**\n"
-                    f"  • Max download & upload speed 🚀\n"
-                    f"  • Access to restricted content bypass 🔥\n"
-                    f"  • Custom thumbnail support 📸\n"
-                    f"  • Parallel transmission chunks ⚡\n\n"
-                    f"📈 **YOUR PLAN DETAILS:**\n"
-                    f"  • **Duration:** `{time_val}`\n"
-                    f"  • **Expiry Time:** `{expiry_str_in_ist}` (IST)\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🚀 _Enjoy the maximum speed & limit!_"
-                ), 
-                disable_web_page_preview=True              
-            )
+            user_id = int(message.command[1])
+        except ValueError:
+            await message.reply_text("❌ **Invalid user ID.** Please provide a numeric ID.")
+            return
+
+        user_mention = f"User (`{user_id}`)"
+        user_name = "User"
+        try:
+            user = await client.get_users(user_id)
+            if user:
+                user_mention = user.mention
+                user_name = user.mention
         except Exception:
             pass
+
+        time_val = message.command[2]+" "+message.command[3]
+        seconds = await get_seconds(time_val)
+        if seconds > 0:
+            expiry_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds)  
+            await plans_db.add_premium(user_id, expiry_time)  
+            data = await plans_db.check_premium(user_id)
+            expiry = data.get("expire_date")   
+            expiry_str_in_ist = expiry.astimezone(pytz.timezone("Asia/Kolkata")).strftime("%d-%m-%Y %I:%M:%S %p")         
+            await message.reply_text(
+                f"✨ 🖤 **𝗦𝗧𝗢𝗟𝗘𝗡 𝗛𝗔𝗣𝗣𝗜𝗡𝗘𝗦𝗦** 🖤 ✨\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🌟 **PREMIUM ACCESS ACTIVATED** 🌟\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 **User:** {user_mention}\n"
+                f"🆔 **ID:** `{user_id}`\n"
+                f"⏳ **Duration:** `{time_val}`\n"
+                f"📅 **Start:** `{current_time}` (IST)\n"
+                f"⌛ **Expiry:** `{expiry_str_in_ist}` (IST)\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"✨ _Powered by CHOSEN ONE ⚝_", 
+                disable_web_page_preview=True
+            )
+            try:
+                await client.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"🎉 **CONGRATULATIONS! PREMIUM ACTIVATED** 🎉\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"👋 Hey {user_name},\n"
+                        f"Thank you for supporting 🖤 **Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝**!\n"
+                        f"Your account has been upgraded to Premium status. Enjoy! 👑\n\n"
+                        f"⚡ **BENEFITS ACTIVATED:**\n"
+                        f"  • Max download & upload speed 🚀\n"
+                        f"  • Access to restricted content bypass 🔥\n"
+                        f"  • Custom thumbnail support 📸\n"
+                        f"  • Parallel transmission chunks ⚡\n\n"
+                        f"📈 **YOUR PLAN DETAILS:**\n"
+                        f"  • **Duration:** `{time_val}`\n"
+                        f"  • **Expiry Time:** `{expiry_str_in_ist}` (IST)\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🚀 _Enjoy the maximum speed & limit!_"
+                    ), 
+                    disable_web_page_preview=True              
+                )
+            except Exception:
+                pass
+                    
+        else:
+            await message.reply_text("Invalid time format. Please use '1 day for days', '1 hour for hours', or '1 min for minutes', or '1 month for months' or '1 year for year'")
     else:
-        await message.reply_text("❌ **Invalid time format.** Use e.g. '1 day', '1 hour', '1 month', or 'lifetime'.")
+        await message.reply_text("Usage : /add user_id time (e.g., '1 day for days', '1 hour for hours', or '1 min for minutes', or '1 month for months' or '1 year for year')")
 
 
 @app.on_message(filters.command("transfer"))
@@ -439,4 +422,77 @@ async def refresh_users(_, message):
         f"> **Not Removed Users:**\n{not_removed_text}"
     )
     await message.reply(summary)
+
+# Admin Administration: Clear Premium, Ban, and Unban features
+from devgagan.core.mongo.db import is_user_banned, ban_user, unban_user
+
+@app.on_message(filters.command("clearpremium") & filters.user(OWNER_ID))
+async def clear_all_premium_cmd(client, message):
+    try:
+        await plans_db.db.delete_many({})
+        await message.reply_text("✅ **All premium users have been successfully removed from the database.**")
+    except Exception as e:
+        await message.reply_text(f"❌ **Failed to clear premium users:** `{e}`")
+
+@app.on_message(filters.command("ban") & filters.user(OWNER_ID))
+async def ban_user_cmd(client, message):
+    if len(message.command) == 2:
+        try:
+            user_id = int(message.command[1])
+        except ValueError:
+            await message.reply_text("❌ **Invalid user ID.** Please provide a numeric ID.")
+            return
+        
+        await ban_user(user_id)
+        # Also remove premium and clean token sessions for security
+        await plans_db.remove_premium(user_id)
+        try:
+            from motor.motor_asyncio import AsyncIOMotorClient
+            from config import MONGO_DB
+            tclient = AsyncIOMotorClient(MONGO_DB)
+            tdb = tclient["telegram_bot"]
+            await tdb["tokens"].delete_one({"user_id": user_id})
+        except Exception:
+            pass
+
+        await message.reply_text(f"🚫 **User {user_id} has been banned from the bot.**")
+    else:
+        await message.reply_text("Usage: `/ban user_id`")
+
+@app.on_message(filters.command("unban") & filters.user(OWNER_ID))
+async def unban_user_cmd(client, message):
+    if len(message.command) == 2:
+        try:
+            user_id = int(message.command[1])
+        except ValueError:
+            await message.reply_text("❌ **Invalid user ID.** Please provide a numeric ID.")
+            return
+        
+        await unban_user(user_id)
+        await message.reply_text(f"✅ **User {user_id} has been unbanned successfully.**")
+    else:
+        await message.reply_text("Usage: `/unban user_id`")
+
+# Intercept all incoming messages from banned users at group -1 priority
+@app.on_message(group=-1)
+async def check_banned_user(client, message):
+    user_id = message.from_user.id if message.from_user else None
+    if not user_id:
+        return
+    # Exclude OWNER_ID from ban checks
+    if user_id in OWNER_ID:
+        return
+    if await is_user_banned(user_id):
+        await message.reply_text("❌ **You are banned from using this bot.**\n\n💬 Please contact the admin to unban.")
+        message.stop_propagation()
+
+# Intercept all incoming callback queries from banned users at group -1 priority
+@app.on_callback_query(group=-1)
+async def check_banned_user_callback(client, query):
+    user_id = query.from_user.id
+    if user_id in OWNER_ID:
+        return
+    if await is_user_banned(user_id):
+        await query.answer("❌ You are banned from using this bot. Contact admin to unban.", show_alert=True)
+        query.stop_propagation()
     

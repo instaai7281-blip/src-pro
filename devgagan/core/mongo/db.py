@@ -66,9 +66,9 @@ async def remove_clean_words(user_id, words_to_remove):
 async def set_channel(user_id, chat_id):
     data = await get_data(user_id)
     if data and data.get("_id"):
-        await db.update_one({"_id": user_id}, {"$set": {"chat_id": chat_id, "target_chat_id": chat_id}})
+        await db.update_one({"_id": user_id}, {"$set": {"chat_id": chat_id}})
     else:
-        await db.insert_one({"_id": user_id, "chat_id": chat_id, "target_chat_id": chat_id})
+        await db.insert_one({"_id": user_id, "chat_id": chat_id})
 async def all_words_remove(user_id):
     await db.update_one({"_id": user_id}, {"$set": {"clean_words": None}})
 async def remove_thumbnail(user_id):
@@ -81,7 +81,7 @@ async def remove_replace(user_id):
 async def remove_session(user_id):
     await db.update_one({"_id": user_id}, {"$set": {"session": None}})
 async def remove_channel(user_id):
-    await db.update_one({"_id": user_id}, {"$set": {"chat_id": None, "target_chat_id": None}})
+    await db.update_one({"_id": user_id}, {"$set": {"chat_id": None}})
 async def set_filter(user_id, media_type, status):
     data = await get_data(user_id)
     if data and data.get("_id"):
@@ -144,67 +144,76 @@ async def load_all_thumbnails(thumbnail_dir):
     except Exception as e:
         print(f"[ERROR] Failed to restore custom thumbnails: {e}")
 
-# Collection for global configuration settings
-config_db = mongo.user_data.global_config
+# Settings database helpers for global configs (e.g. auth channel)
+settings_db = mongo.user_data.settings
 
-async def get_broadcast_config():
-    doc = await config_db.find_one({"_id": "scheduled_broadcast"})
-    if not doc:
-        default = {
-            "_id": "scheduled_broadcast",
-            "message": "Hello! This is a scheduled broadcast message.",
-            "interval_mins": 60,
-            "is_active": False,
-            "last_run": None
-        }
-        await config_db.insert_one(default)
-        return default
-    return doc
+async def get_auth_channels():
+    doc = await settings_db.find_one({"_id": "auth_channels_list"})
+    if doc:
+        return doc.get("chat_ids", [])
+    old = await settings_db.find_one({"_id": "auth_channel"})
+    if old and old.get("chat_id"):
+        return [old.get("chat_id")]
+    return []
 
-async def update_broadcast_config(update_dict):
-    await config_db.update_one(
-        {"_id": "scheduled_broadcast"},
-        {"$set": update_dict},
+async def add_auth_channel(chat_id):
+    channels = await get_auth_channels()
+    if chat_id not in channels:
+        channels.append(chat_id)
+        await settings_db.update_one(
+            {"_id": "auth_channels_list"},
+            {"$set": {"chat_ids": channels}},
+            upsert=True
+        )
+
+async def remove_auth_channel(chat_id):
+    channels = await get_auth_channels()
+    if chat_id in channels:
+        channels.remove(chat_id)
+        await settings_db.update_one(
+            {"_id": "auth_channels_list"},
+            {"$set": {"chat_ids": channels}},
+            upsert=True
+        )
+
+async def clear_auth_channels():
+    await settings_db.update_one(
+        {"_id": "auth_channels_list"},
+        {"$set": {"chat_ids": []}},
+        upsert=True
+    )
+    await settings_db.delete_one({"_id": "auth_channel"})
+
+async def set_bio_channel(chat_id):
+    await settings_db.update_one(
+        {"_id": "bio_channel"},
+        {"$set": {"chat_id": chat_id}},
         upsert=True
     )
 
-# Collection for tracking auto-deletion of sent broadcast messages
-deletions_db = mongo.user_data.scheduled_broadcast_deletions
+async def get_bio_channel():
+    doc = await settings_db.find_one({"_id": "bio_channel"})
+    return doc.get("chat_id") if doc else None
 
-async def add_broadcast_deletion(chat_id, message_id, delete_at):
-    await deletions_db.insert_one({
-        "chat_id": chat_id,
-        "message_id": message_id,
-        "delete_at": delete_at
-    })
-
-async def get_pending_deletions():
-    cursor = deletions_db.find({})
-    deletions = []
-    async for doc in cursor:
-        deletions.append(doc)
-    return deletions
-
-async def remove_broadcast_deletion(doc_id):
-    await deletions_db.delete_one({"_id": doc_id})
-
-# Collection for tracking chats (groups/channels) where the bot is active
-joined_chats_db = mongo.user_data.joined_chats
-
-async def add_joined_chat(chat_id, title):
-    import datetime
-    await joined_chats_db.update_one(
-        {"_id": chat_id},
-        {"$set": {"title": title, "updated_at": datetime.datetime.now()}},
+async def set_log_channel(chat_id):
+    await settings_db.update_one(
+        {"_id": "log_channel"},
+        {"$set": {"chat_id": chat_id}},
         upsert=True
     )
 
-async def get_all_joined_chats():
-    cursor = joined_chats_db.find({})
-    chats = []
-    async for doc in cursor:
-        chats.append({"chat_id": doc["_id"], "title": doc.get("title", "Unknown")})
-    return chats
+async def get_log_channel():
+    doc = await settings_db.find_one({"_id": "log_channel"})
+    return doc.get("chat_id") if doc else None
 
-async def remove_joined_chat(chat_id):
-    await joined_chats_db.delete_one({"_id": chat_id})
+# Ban / Unban helpers
+async def ban_user(user_id):
+    await db.update_one({"_id": user_id}, {"$set": {"banned": True}}, upsert=True)
+
+async def unban_user(user_id):
+    await db.update_one({"_id": user_id}, {"$set": {"banned": False}}, upsert=True)
+
+async def is_user_banned(user_id):
+    x = await db.find_one({"_id": user_id})
+    return x.get("banned", False) if x else False
+ 
