@@ -438,8 +438,6 @@ async def tag_actions_callback(client, callback_query: CallbackQuery):
 
 # ────── Filter & Reset Actions ──────
 
-@app.on_message(filters.private)
-# Note: we need to adjust regex below to support sticker and html
 @app.on_callback_query(filters.regex(r"^toggle_(video|document|audio|photo|text|sticker|html)$"))
 async def toggle_filter(client, callback_query: CallbackQuery):
     media_type = callback_query.data.split("_")[1]
