@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rakeshbhai Dihora - ATS SEO Content Writer & E-commerce Operations Resume</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #059669; /* Elegant Emerald */
+      --text-dark: #0f172a;
+      --text-muted: #475569;
+      --border: #e2e8f0;
+      --bg: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    body {
+      background-color: #f8fafc;
+      color: var(--text-dark);
+      line-height: 1.6;
+      padding: 40px 20px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .resume-width {
+      background-color: var(--bg);
+      width: 100%;
+      max-width: 800px;
+      padding: 45px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+      border: 1px solid var(--border);
+    }
+
+    /* Print FAB Button */
+    .print-btn {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background-color: var(--primary);
+      color: #ffffff;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+      z-index: 1000;
+      transition: all 0.2s ease;
+    }
+
+    .print-btn:hover {
+      background-color: #047857;
+      transform: translateY(-1px);
+    }
+
+    /* Header Section */
+    .header {
+      text-align: center;
+      margin-bottom: 25px;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 20px;
+    }
+
+    .header h1 {
+      font-size: 30px;
+      font-weight: 700;
+      color: var(--text-dark);
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+
+    .contact-info {
+      font-size: 13px;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .contact-info span {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* Section Styles */
+    .section {
+      margin-bottom: 25px;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--primary);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title::after {
+      content: '';
+      flex-grow: 1;
+      height: 1px;
+      background-color: var(--border);
+    }
+
+    .summary-text {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      text-align: justify;
+    }
+
+    /* Skills Grid */
+    .skills-text {
+      margin-bottom: 10px;
+      font-size: 13.5px;
+    }
+
+    .skills-category {
+      font-weight: 600;
+      color: var(--text-dark);
+      display: inline;
+    }
+
+    .skills-items {
+      color: var(--text-muted);
+    }
+
+    /* Experience Entries - Full Width Layout to maximize space usage */
+    .job-entry {
+      margin-bottom: 20px;
+    }
+
+    .job-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 5px;
+    }
+
+    .job-title-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .job-role {
+      font-size: 14.5px;
+      font-weight: 700;
+      color: var(--text-dark);
+    }
+
+    .job-company {
+      font-size: 13px;
+      font-style: italic;
+      color: var(--primary);
+      margin-top: 1px;
+    }
+
+    .job-date {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background-color: #f1f5f9;
+      padding: 3px 10px;
+      border-radius: 20px;
+    }
+
+    .job-desc {
+      margin-top: 8px;
+      padding-left: 18px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .job-desc li {
+      margin-bottom: 6px;
+      text-align: justify;
+    }
+
+    /* Education Section */
+    .edu-entry {
+      margin-bottom: 12px;
+    }
+
+    .edu-header {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .edu-institution {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-style: italic;
+      font-weight: normal;
+      margin-top: 2px;
+    }
+
+    /* Hide Print button when printing and reset body background */
+    @media print {
+      body {
+        background-color: #ffffff;
+        padding: 0;
+        margin: 0;
+      }
+      .resume-width {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        max-width: 100%;
+      }
+      .print-btn {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Print Action Button -->
+  <button class="print-btn" onclick="window.print()">Print Resume / Save PDF</button>
+
+  <div class="resume-width">
+    
+    <!-- Header/Contact -->
+    <div class="header">
+      <h1 contenteditable="true">Rakeshbhai Dihora</h1>
+      <div class="subtitle" contenteditable="true">SEO Content Writer & E-commerce Operations Specialist</div>
+      <div class="contact-info">
+        <span contenteditable="true">📍 Bhavnagar, Gujarat, India</span>
+        <span contenteditable="true">📞 +91 8799137439</span>
+        <span contenteditable="true">✉️ dihorarakesh128@gmail.com</span>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div class="section">
+      <div class="section-title">Professional Summary</div>
+      <p class="summary-text" contenteditable="true">
+        Detail-oriented and analytical professional with practical experience in SEO content writing, digital catalog management, and e-commerce backend operations. Proficient in optimizing titles, keywords, tags, and product descriptions to drive organic visibility and user conversions. Skilled in utilizing advanced AI systems (ChatGPT, Gemini, Claude) for content research, quality assurance, and automated workflow scaling. Strong capability in database cataloging, Google Sheets analysis, and page layouts, seeking to deliver high-quality outcomes for Eduminatti.
+      </p>
+    </div>
+
+    <!-- Technical Skills -->
+    <div class="section">
+      <div class="section-title">Skills & Competencies</div>
+      <div class="skills-text">
+        <div class="skills-category">E-commerce & Operations:</div> 
+        <span class="skills-items" contenteditable="true">Product Listing Creation, Marketplace Backend Operations, Category Approvals, Product Management, Business Analysis, E-commerce Logistics.</span>
+      </div>
+      <div class="skills-text">
+        <div class="skills-category">SEO & Content Marketing:</div> 
+        <span class="skills-items" contenteditable="true">Search Engine Optimization (SEO), Keyword Research, Metadata Optimization, Content Marketing, Blog Writing, Copywriting, Digital Advertising.</span>
+      </div>
+      <div class="skills-text">
+        <div class="skills-category">Tools & Analytics:</div> 
+        <span class="skills-items" contenteditable="true">Google Sheets, MS Excel, Research and Analytics, Report Writing, Problem Solving, AI Prompt Engineering, Basic HTML & CSS.</span>
+      </div>
+    </div>
+
+    <!-- Experience -->
+    <div class="section">
+      <div class="section-title">Professional Experience</div>
+      
+      <div class="job-entry">
+        <div class="job-header">
+          <div class="job-title-group">
+            <span class="job-role" contenteditable="true">Freelance SEO Content Writer & E-commerce Operations Coordinator</span>
+            <span class="job-company" contenteditable="true">Remote Services</span>
+          </div>
+          <span class="job-date" contenteditable="true">Oct 2024 &ndash; Present</span>
+        </div>
+        <ul class="job-desc" contenteditable="true">
+          <li>Create and optimize highly engaging product listings and manage marketplace backend operations and category approvals.</li>
+          <li>Optimize listing titles, keywords, tags, and descriptions to boost organic search visibility, click-through rates, and buyer conversions.</li>
+          <li>Manage and optimize website content, blogs, and articles to improve overall SEO ranking and search engine indexing.</li>
+          <li>Write, structure, and optimize digital reports and content drafts, ensuring layout consistency and clarity.</li>
+          <li>Engineered custom AI prompts to accelerate content niches research, outline article structures, and perform quality assurance editing.</li>
+          <li>Transcribed and structured raw notes and data logs into styled sheets and clean Excel databases with 98% accuracy.</li>
+        </ul>
+      </div>
+
+      <div class="job-entry">
+        <div class="job-header">
+          <div class="job-title-group">
+            <span class="job-role" contenteditable="true">Bilingual Data Curation & Database Specialist</span>
+            <span class="job-company" contenteditable="true">Project MockMate</span>
+          </div>
+          <span class="job-date" contenteditable="true">Ongoing Collaboration</span>
+        </div>
+        <ul class="job-desc" contenteditable="true">
+          <li>Cleansed, audited, and maintained large educational question database files in JSON and CSV formats for a live portal.</li>
+          <li>Checked character-set rendering and verified page layouts to ensure visual consistency across desktop and mobile screens.</li>
+          <li>Maintained accurate audit trackers of database updates to prevent live website errors.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Projects -->
+    <div class="section">
+      <div class="section-title">Key Projects</div>
+      <div class="project-entry">
+        <div class="project-header">
+          <span class="job-role" contenteditable="true">MockMate &ndash; AI Examination Platform</span>
+          <span class="job-date" contenteditable="true"><a href="https://mocktest.trendseai.com" style="color: var(--primary); text-decoration: none;" target="_blank">mocktest.trendseai.com</a></span>
+        </div>
+        <ul class="job-desc" contenteditable="true">
+          <li>Collaborated on the layout formatting, page grid alignments, and content cataloging of a live exam portal, ensuring a clean, responsive, and user-friendly experience across multiple screen resolutions.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Education -->
+    <div class="section">
+      <div class="section-title">Education</div>
+      <div class="edu-entry">
+        <div class="edu-header">
+          <span contenteditable="true">B.Sc. in Cyber Security (1st Year)</span>
+          <span class="job-date" contenteditable="true">Currently Pursuing</span>
+        </div>
+        <div class="edu-institution" contenteditable="true">BAOU University, Bhavnagar, Gujarat</div>
+      </div>
+      <div class="edu-entry">
+        <div class="edu-header">
+          <span contenteditable="true">Higher Secondary Certificate (12th Standard)</span>
+          <span class="job-date" contenteditable="true">Completed</span>
+        </div>
+        <div class="edu-institution" contenteditable="true">Gujarat State Board, Bhavnagar, Gujarat</div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>
