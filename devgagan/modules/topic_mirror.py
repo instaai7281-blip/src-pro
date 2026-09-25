@@ -1,8 +1,13 @@
 # ---------------------------------------------------
 # File Name: topic_mirror.py
-# Description: Advanced Forum Topic Mirroring module with 2-Phase Topic Pre-Creation,
-#              Save-Restricted Protected Content Bypass, Video Metadata/Thumbnails,
-#              Advanced Text Cleaning, and Live High-Speed Progress UI.
+# Description: Advanced Forum Topic Mirroring module with:
+#              - 2-Phase Topic Pre-Creation & Anti-Duplicate Mapping
+#              - Persistent Checkpoints (Resume from last pending message)
+#              - Save-Restricted Protected Content Bypass
+#              - Media Filters & User Settings Integration
+#              - @mentions replaced with '⚝' & 'Extracted by' replaced with Stolen Happiness tag
+#              - Full Video Metadata, Thumbnails & PDF Watermarking
+#              - Live High-Speed Dashboard UI
 # ---------------------------------------------------
 
 import os
@@ -20,6 +25,7 @@ from devgagan import app, get_client, pro_clients
 from config import API_ID, API_HASH, OWNER_ID, LOG_GROUP, THUMBNAIL_DIR
 from devgagan.core.func import chk_user, humanbytes, TimeFormatter, video_metadata, thumbnail, add_pdf_watermark
 from devgagan.core.mongo import db
+from devgagan.core.get_func import get_user_branding_tag
 
 # In-memory tracking of active topic mirroring jobs
 active_mirrors = {}
@@ -64,8 +70,14 @@ def remove_chaudhary_fancy(text: str) -> str:
         r'insaan[^a-zA-Z0-9\s]*',
         r'team\s*hs[^a-zA-Z0-9\s]*',
         r'team\s*hs\s*亗?',
-        r'(?:extracted|downloaded|download|uploaded|upload|forwarded)[\s_]*by\s*[:\-➤>–\-]*\s*[^\n]*',
-        r'powered\s*by\s*[:\-➤>–\-]*\s*[^\n]*',
+        r'devgagan',
+        r'@Src_pro_bot',
+        r'Chosen\s*One',
+        r'team[\s_\-\.]*jnc',
+        r'team[\s_\-\.]*sp[ay]+',
+        r'team[\s_\-\.]*spy[\s_\-\.]*pro',
+        r"let'?s\s*help",
+        r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
     ]
     
     match_indices = set()
@@ -94,64 +106,84 @@ def remove_chaudhary_fancy(text: str) -> str:
 
 async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     """
-    Cleans caption by removing unwanted links, watermark patterns, Chaudhary fancy fonts,
-    applying user custom clean_words & replacements from MongoDB, and attaching custom branding.
+    Cleans caption according to user settings:
+    - Replaces @mentions with '⚝'
+    - Replaces 'Extracted by' / 'Downloaded by' with user's branding tag (e.g. '🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝')
+    - Applies custom clean_words, replacements, and custom template caption from MongoDB
     """
+    user_data = await db.get_data(user_id) or {}
+    
+    # Check if raw caption preference is ON
+    if user_data.get("keep_original_caption", False):
+        return original_caption or ""
+
+    # Get active branding tag (Default: '🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝')
+    branding_tag = get_user_branding_tag(user_id)
+    if not branding_tag:
+        branding_tag = "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
+
     text = original_caption or ""
     if not text:
-        # Default branding tag if no caption exists
-        user_data = await db.get_data(user_id)
-        custom_cap = user_data.get("caption") if user_data else None
-        return custom_cap if custom_cap else "> **__Pwrd by CHOSEN ONE ⚝__**"
+        custom_cap = user_data.get("caption")
+        return custom_cap if custom_cap else f"> **{branding_tag}**"
 
     # 1. Clean Chaudhary & fancy characters
     text = remove_chaudhary_fancy(text)
 
-    # 2. Remove unwanted promoter phrases
+    # 2. Replace any @mentions (@username, @channel) with ⚝
+    text = re.sub(r'@\w+', '⚝', text)
+
+    # 3. Replace Extracted by / Downloaded by / Uploaded by with the Branding Tag
+    extraction_pattern = r'(?i)(?:Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*'
+    if re.search(extraction_pattern, text):
+        text = re.sub(extraction_pattern, f"> **{branding_tag}**", text)
+    else:
+        # Also clean generic powered by lines
+        text = re.sub(r'(?i)powered\s*by[\s_:➤>–\-]*[^\n]*', f"> **{branding_tag}**", text)
+
+    # 4. Remove other unwanted promoter phrases
     unwanted_phrases = [
         r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*',
         r'(?i)[*_]*team[\s_\-\.]*sp[ay]+[*_]*',
         r'(?i)[*_]*team[\s_\-\.]*spy[\s_\-\.]*pro[*_]*',
         r"(?i)[*_]*let'?s\s*help[*_]*",
         r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
-        r'(?i)devgagan',
-        r'(?i)@Src_pro_bot',
-        r'(?i)(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*',
-        r'(?i)powered\s*by[^\n]*',
-        r'(?i)via\s*@\w+',
-        r'(?i)bot:\s*@\w+',
+        r'(?i)via\s*⚝',
+        r'(?i)bot:\s*⚝',
     ]
     for phrase in unwanted_phrases:
         text = re.sub(phrase, '', text)
 
-    # 3. Apply user database configurations (clean_words, replace_txt, custom caption)
-    try:
-        data = await db.get_data(user_id)
-        if data:
-            clean_words = data.get("clean_words") or []
-            for word in clean_words:
-                if word:
-                    text = text.replace(word, "")
+    # 5. Apply user custom clean words & text replacements from database
+    clean_words = user_data.get("clean_words") or []
+    for word in clean_words:
+        if word:
+            text = text.replace(word, "")
 
-            to_replace = data.get("to_replace")
-            replace_txt = data.get("replace_txt")
-            if to_replace and replace_txt:
-                text = text.replace(to_replace, replace_txt)
+    to_replace = user_data.get("to_replace")
+    replace_txt = user_data.get("replace_txt")
+    if to_replace and replace_txt:
+        text = text.replace(to_replace, replace_txt)
 
-            custom_cap = data.get("caption")
-            if custom_cap:
-                text = f"{custom_cap}\n\n{text}".strip()
-            else:
-                # Add default branding tag if not present
-                if "CHOSEN ONE" not in text:
-                    text = f"{text}\n\n> **__Pwrd by CHOSEN ONE ⚝__**".strip()
-    except Exception as e:
-        print(f"[TopicMirror] Caption cleaning error: {e}")
+    # 6. Apply custom template caption if configured
+    custom_cap = user_data.get("caption")
+    if custom_cap:
+        text = f"{custom_cap}\n\n{text}".strip()
+    else:
+        # Ensure branding tag is present at the bottom
+        if branding_tag not in text:
+            text = f"{text}\n\n> **{branding_tag}**".strip()
 
-    # 4. Normalize spaces and newlines
+    # 7. Normalize whitespace
     text = re.sub(r'[ \t]+', ' ', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
+
+
+def is_media_type_enabled(user_data: dict, media_type: str) -> bool:
+    """Checks if the user has enabled or disabled this specific media filter in /settings."""
+    filters_data = user_data.get("filters", {})
+    return filters_data.get(media_type, True)
 
 
 def parse_source_link(link: str):
@@ -219,6 +251,58 @@ async def get_working_userbot(user_id: int):
                 return c, False
 
     return None, False
+
+
+async def get_all_target_forum_topics(client, tgt_chat_id):
+    """
+    Scans ALL existing forum topics in target supergroup with full pagination
+    to ensure zero duplicate topic creations.
+    Returns: (topics_by_title_lower, topics_by_id)
+    """
+    topics_by_title = {}  # lowercase title -> topic_id
+    topics_by_id = {}     # topic_id -> title
+
+    try:
+        async for t in client.get_forum_topics(tgt_chat_id):
+            if t and getattr(t, "title", None):
+                t_title = t.title.strip().lower()
+                topics_by_title[t_title] = t.message_thread_id
+                topics_by_id[t.message_thread_id] = t.title
+    except Exception as e:
+        print(f"[TopicMirror] get_forum_topics scan notice: {e}")
+
+    # Paginated Raw RPC fallback to guarantee fetching every single topic
+    try:
+        peer = await client.resolve_peer(tgt_chat_id)
+        offset_date = 0
+        offset_id = 0
+        offset_topic = 0
+        while True:
+            res = await client.invoke(raw.functions.messages.GetForumTopics(
+                peer=peer,
+                offset_date=offset_date,
+                offset_id=offset_id,
+                offset_topic=offset_topic,
+                limit=100
+            ))
+            topics = getattr(res, "topics", [])
+            if not topics:
+                break
+            for t in topics:
+                if not getattr(t, "id", None):
+                    continue
+                t_title = getattr(t, "title", "").strip().lower()
+                topics_by_title[t_title] = t.id
+                topics_by_id[t.id] = getattr(t, "title", "")
+                offset_date = getattr(t, "date", 0)
+                offset_id = t.id
+                offset_topic = t.id
+            if len(topics) < 100:
+                break
+    except Exception as rpc_err:
+        print(f"[TopicMirror] Raw GetForumTopics pagination notice: {rpc_err}")
+
+    return topics_by_title, topics_by_id
 
 
 async def fetch_all_messages_for_topic(userbot, src_chat_id, topic_id: int, max_limit: int = 5000):
@@ -304,7 +388,24 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
     """
     Transfers a single message using server-side copy first, with full extraction fallback
     (download, metadata extraction, auto-thumbnail, watermark, caption cleaning, and upload).
+    Checks user media filters and settings.
     """
+    user_data = await db.get_data(user_id) or {}
+
+    # Check Media Filters from Settings
+    if msg.video and not is_media_type_enabled(user_data, "video"):
+        return False, "skipped_filter"
+    if msg.document and not is_media_type_enabled(user_data, "document"):
+        return False, "skipped_filter"
+    if msg.photo and not is_media_type_enabled(user_data, "photo"):
+        return False, "skipped_filter"
+    if msg.audio and not is_media_type_enabled(user_data, "audio"):
+        return False, "skipped_filter"
+    if msg.sticker and not is_media_type_enabled(user_data, "sticker"):
+        return False, "skipped_filter"
+    if msg.text and not is_media_type_enabled(user_data, "text"):
+        return False, "skipped_filter"
+
     # 1. First Attempt: Fast server-side copy via userbot or app
     try:
         try:
@@ -336,7 +437,6 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
 
     except Exception as e:
         # 2. Restricted / Protected Content Fallback: Download via userbot & Upload to target topic
-        # If pure text message without media:
         if msg.text:
             try:
                 final_text = await clean_and_brand_caption(user_id, msg.text)
@@ -373,7 +473,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
             orig_cap = msg.caption if msg.caption else ""
             final_caption = await clean_and_brand_caption(user_id, orig_cap)
 
-            # Check thumbnail
+            # Check custom thumbnail from settings
             thumb_path = thumbnail(user_id)
             file_extension = str(temp_file).split('.')[-1].lower()
 
@@ -398,8 +498,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
             elif msg.document or file_extension == 'pdf':
                 # Apply PDF watermark if set in user settings
                 if file_extension == 'pdf':
-                    user_data = await db.get_data(user_id)
-                    watermark_txt = user_data.get("watermark_text") if user_data else None
+                    watermark_txt = user_data.get("watermark_text")
                     if watermark_txt:
                         temp_file = add_pdf_watermark(temp_file, watermark_txt)
 
@@ -644,15 +743,22 @@ async def topic_mirror_cmd(client, message):
             print(f"[TopicMirror] ToggleForum notice: {tf_err}")
 
         await status_msg.edit(
-            f"🔍 **Phase 1: Scanning Source Topics & Pre-Creating Target Topics...**\n\n"
+            f"🔍 **Phase 1: Scanning Topics & Checking Existing Mappings...**\n\n"
             f"📤 **Source:** `{src_title}`\n"
             f"📥 **Target:** `{tgt_title}`",
             reply_markup=cancel_btn
         )
 
         # -------------------------------------------------------------
-        # PHASE 1: DISCOVER ALL SOURCE TOPICS & PRE-CREATE IN TARGET
+        # PHASE 1: DISCOVER SOURCE TOPICS & MAP WITHOUT DUPLICATES
         # -------------------------------------------------------------
+        # Load persistent mirror session from database
+        saved_session = await db.get_mirror_session(src_chat_id, tgt_chat_id)
+        saved_topics = saved_session.get("topics", {})
+
+        # Full paginated scan of existing topics in target supergroup
+        target_topics_by_title, target_topics_by_id = await get_all_target_forum_topics(app, tgt_chat_id)
+
         source_topics = []
         try:
             async for forum_topic in userbot.get_forum_topics(src_chat_id):
@@ -694,31 +800,37 @@ async def topic_mirror_cmd(client, message):
             else:
                 source_topics = [{"id": 1, "title": "General", "icon_color": None, "icon_emoji_id": None}]
 
-        # Get existing topics in target supergroup to avoid duplicates
-        target_existing_topics = {}
-        try:
-            async for tgt_topic in app.get_forum_topics(tgt_chat_id):
-                target_existing_topics[tgt_topic.title.strip().lower()] = tgt_topic.message_thread_id
-        except Exception as tgt_scan_err:
-            print(f"[TopicMirror] Could not scan existing target topics: {tgt_scan_err}")
-
-        topic_map = {}
-        topic_names = {}
+        topic_map = {}   # src_topic_id -> tgt_topic_id
+        topic_names = {} # src_topic_id -> title
 
         for st in source_topics:
             st_id = st["id"]
             st_title = st["title"].strip()
             topic_names[st_id] = st_title
 
+            # 1. General topic (id 1) always maps to target General topic (1 or None)
             if st_id == 1 or st_title.lower() == "general":
                 topic_map[st_id] = 1
+                await db.save_mirror_topic_mapping(src_chat_id, tgt_chat_id, st_id, 1, st_title)
                 continue
 
+            # 2. Check if already saved in MongoDB session and valid in target
+            saved_info = saved_topics.get(str(st_id))
+            if saved_info and saved_info.get("tgt_topic_id"):
+                candidate_id = saved_info["tgt_topic_id"]
+                if candidate_id in target_topics_by_id or candidate_id == 1:
+                    topic_map[st_id] = candidate_id
+                    continue
+
+            # 3. Check if topic with identical title already exists in target supergroup
             lower_title = st_title.lower()
-            if lower_title in target_existing_topics:
-                topic_map[st_id] = target_existing_topics[lower_title]
+            if lower_title in target_topics_by_title:
+                existing_tgt_id = target_topics_by_title[lower_title]
+                topic_map[st_id] = existing_tgt_id
+                await db.save_mirror_topic_mapping(src_chat_id, tgt_chat_id, st_id, existing_tgt_id, st_title)
                 continue
 
+            # 4. Only if topic does NOT exist anywhere, create a NEW topic in target supergroup
             new_tgt_topic_id = None
             try:
                 created = await app.create_forum_topic(
@@ -728,7 +840,8 @@ async def topic_mirror_cmd(client, message):
                     icon_emoji_id=st.get("icon_emoji_id")
                 )
                 new_tgt_topic_id = created.message_thread_id
-                target_existing_topics[lower_title] = new_tgt_topic_id
+                target_topics_by_title[lower_title] = new_tgt_topic_id
+                target_topics_by_id[new_tgt_topic_id] = st_title
             except Exception as create_err:
                 print(f"[TopicMirror] High-level create topic failed for '{st_title}': {create_err}. Trying raw RPC...")
                 try:
@@ -746,27 +859,31 @@ async def topic_mirror_cmd(client, message):
                             new_tgt_topic_id = upd.id
                             break
                     if new_tgt_topic_id:
-                        target_existing_topics[lower_title] = new_tgt_topic_id
+                        target_topics_by_title[lower_title] = new_tgt_topic_id
+                        target_topics_by_id[new_tgt_topic_id] = st_title
                 except Exception as rpc_create_err:
                     print(f"[TopicMirror] Raw CreateForumTopic error for '{st_title}': {rpc_create_err}")
 
-            topic_map[st_id] = new_tgt_topic_id if new_tgt_topic_id else 1
+            final_mapped_id = new_tgt_topic_id if new_tgt_topic_id else 1
+            topic_map[st_id] = final_mapped_id
+            await db.save_mirror_topic_mapping(src_chat_id, tgt_chat_id, st_id, final_mapped_id, st_title)
             await asyncio.sleep(0.3)
 
         total_topics_count = len(topic_map)
         await status_msg.edit(
-            f"✅ **Phase 1 Complete:** Discovered & Mapped `{total_topics_count}` Topics!\n\n"
-            f"🚀 **Starting Phase 2:** Extracting & Mirroring messages topic-by-topic with full metadata & cleaning...\n\n"
+            f"✅ **Phase 1 Complete:** Discovered & Mapped `{total_topics_count}` Topics (0 Duplicates)!\n\n"
+            f"🚀 **Starting Phase 2:** Extracting & Mirroring pending messages topic-by-topic...\n\n"
             f"*(Click below or send `/cancel_mirror` at any time to stop)*",
             reply_markup=cancel_btn
         )
         await asyncio.sleep(1.5)
 
         # -------------------------------------------------------------
-        # PHASE 2: EXTRACT & MIRROR MESSAGES TOPIC BY TOPIC
+        # PHASE 2: EXTRACT & MIRROR MESSAGES TOPIC BY TOPIC (WITH RESUME)
         # -------------------------------------------------------------
         overall_copied = 0
         overall_failed = 0
+        overall_skipped = 0
         topic_stats = {}
 
         current_topic_index = 0
@@ -778,11 +895,25 @@ async def topic_mirror_cmd(client, message):
 
             current_topic_index += 1
             topic_title = topic_names.get(src_topic_id, f"Topic {src_topic_id}")
-            topic_stats[src_topic_id] = {"copied": 0, "failed": 0, "title": topic_title}
+            topic_stats[src_topic_id] = {"copied": 0, "failed": 0, "skipped": 0, "title": topic_title}
 
             # Fetch messages for this topic using 3-layer thread resolution
-            messages_to_copy = await fetch_all_messages_for_topic(userbot, src_chat_id, src_topic_id)
+            all_topic_messages = await fetch_all_messages_for_topic(userbot, src_chat_id, src_topic_id)
+            
+            # Check last copied message ID from MongoDB checkpoint
+            saved_checkpoint = saved_topics.get(str(src_topic_id), {}).get("last_msg_id", 0)
+            
+            # Filter pending messages to copy
+            messages_to_copy = [m for m in all_topic_messages if m.id > saved_checkpoint]
+            already_done_count = len(all_topic_messages) - len(messages_to_copy)
+            topic_stats[src_topic_id]["skipped"] = already_done_count
+            overall_skipped += already_done_count
+
             total_msgs_in_topic = len(messages_to_copy)
+
+            if total_msgs_in_topic == 0:
+                print(f"[TopicMirror] Topic '{topic_title}' already up to date ({already_done_count} msgs). Skipping.")
+                continue
 
             last_edit_time = time.time()
             topic_start_time = time.time()
@@ -793,6 +924,7 @@ async def topic_mirror_cmd(client, message):
 
                 # Skip service/action messages
                 if getattr(msg, "service", False) or getattr(msg, "empty", False):
+                    await db.update_mirror_topic_checkpoint(src_chat_id, tgt_chat_id, src_topic_id, msg.id)
                     continue
 
                 success, method = await transfer_single_message(
@@ -809,8 +941,12 @@ async def topic_mirror_cmd(client, message):
                     overall_copied += 1
                     topic_stats[src_topic_id]["copied"] += 1
                 else:
-                    overall_failed += 1
-                    topic_stats[src_topic_id]["failed"] += 1
+                    if method != "skipped_filter":
+                        overall_failed += 1
+                        topic_stats[src_topic_id]["failed"] += 1
+
+                # Update checkpoint in MongoDB immediately after message is processed
+                await db.update_mirror_topic_checkpoint(src_chat_id, tgt_chat_id, src_topic_id, msg.id)
 
                 # Update live high-speed status UI every 3.5 seconds
                 now = time.time()
@@ -833,11 +969,11 @@ async def topic_mirror_cmd(client, message):
                         f"> 📁 **Topic [{current_topic_index}/{total_topics_count}]:** `{topic_title}`\n"
                         f"> 📥 **Routing To:** `{tgt_title} → {topic_title}`\n\n"
                         f"> 📊 **Topic Progress:** {progress_bar_str} `{percent}%`\n"
-                        f"> 🔢 **Messages:** `{idx}/{total_msgs_in_topic}`\n"
+                        f"> 🔢 **Pending Messages:** `{idx}/{total_msgs_in_topic}`\n"
                         f"> 🚀 **Transfer Speed:** `{speed_msgs:.2f} msg/s`\n"
                         f"> ⏳ **Topic ETA:** `{eta_str}`\n\n"
-                        f"> ✅ **Total Copied:** `{overall_copied}` | ❌ **Failed:** `{overall_failed}`\n"
-                        f"> 🛡️ **Protected Bypass & Text Cleaning:** `Active`\n"
+                        f"> ✅ **New Copied:** `{overall_copied}` | ⏩ **Resumed/Skipped:** `{overall_skipped}`\n"
+                        f"> ❌ **Failed:** `{overall_failed}` | 🛡️ **Bypass & Clean:** `Active`\n"
                         f" ╚═══━━━─⚝─━━━═══╝\n\n"
                         f"**__Pwrd by CHOSEN ONE ⚝__**"
                     )
@@ -853,7 +989,7 @@ async def topic_mirror_cmd(client, message):
         # -------------------------------------------------------------
         breakdown_lines = []
         for tid, stat in topic_stats.items():
-            breakdown_lines.append(f"• **{stat['title']}**: ✅ `{stat['copied']}` | ❌ `{stat['failed']}`")
+            breakdown_lines.append(f"• **{stat['title']}**: ✅ `{stat['copied']}` | ⏩ `{stat['skipped']}` | ❌ `{stat['failed']}`")
 
         breakdown_text = "\n".join(breakdown_lines) if breakdown_lines else "No messages processed."
         status_label = "🛑 **Mirror Cancelled by User**" if not active_mirrors.get(user_id, True) else "🎉 **Mirror Complete!**"
@@ -865,7 +1001,8 @@ async def topic_mirror_cmd(client, message):
             f"📥 **To:** `{tgt_title}`\n\n"
             f"📊 **Overall Stats:**\n"
             f"• **Topics Processed:** `{len(topic_stats)}/{total_topics_count}`\n"
-            f"• **Total Copied:** ✅ `{overall_copied}`\n"
+            f"• **Total New Copied:** ✅ `{overall_copied}`\n"
+            f"• **Total Resumed/Skipped:** ⏩ `{overall_skipped}`\n"
             f"• **Total Failed:** ❌ `{overall_failed}`\n"
             f"• **Total Time:** ⏱️ `{total_time_taken}`\n\n"
             f"📂 **Per-Topic Breakdown:**\n"

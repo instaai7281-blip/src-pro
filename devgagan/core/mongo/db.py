@@ -297,3 +297,39 @@ async def get_all_joined_chats():
 
 async def remove_joined_chat(chat_id):
     await joined_chats_db.delete_one({"_id": chat_id})
+
+# Collection for persistent topic mirror mappings & checkpoints
+mirror_db = mongo.user_data.topic_mirror_sessions
+
+async def get_mirror_session(src_chat_id, tgt_chat_id):
+    """Retrieves saved topic mappings and progress for a source-target pair."""
+    doc = await mirror_db.find_one({"_id": f"{src_chat_id}_{tgt_chat_id}"})
+    return doc if doc else {}
+
+async def save_mirror_topic_mapping(src_chat_id, tgt_chat_id, src_topic_id, tgt_topic_id, title):
+    """Saves or updates a topic mapping between source and target."""
+    key = f"topics.{str(src_topic_id)}"
+    await mirror_db.update_one(
+        {"_id": f"{src_chat_id}_{tgt_chat_id}"},
+        {
+            "$set": {
+                f"{key}.tgt_topic_id": tgt_topic_id,
+                f"{key}.title": title,
+                "updated_at": datetime.datetime.now()
+            }
+        },
+        upsert=True
+    )
+
+async def update_mirror_topic_checkpoint(src_chat_id, tgt_chat_id, src_topic_id, last_msg_id):
+    """Updates the highest message ID copied for a topic."""
+    key = f"topics.{str(src_topic_id)}.last_msg_id"
+    await mirror_db.update_one(
+        {"_id": f"{src_chat_id}_{tgt_chat_id}"},
+        {"$set": {key: last_msg_id, "updated_at": datetime.datetime.now()}},
+        upsert=True
+    )
+
+async def reset_mirror_session(src_chat_id, tgt_chat_id):
+    """Resets progress checkpoints for a source-target mirror session."""
+    await mirror_db.delete_one({"_id": f"{src_chat_id}_{tgt_chat_id}"})
