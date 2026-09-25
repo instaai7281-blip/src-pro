@@ -192,7 +192,7 @@ def get_link(string):
         return False
 
 def video_metadata(file):
-    default_values = {'width': 1, 'height': 1, 'duration': 1}
+    default_values = {'width': 0, 'height': 0, 'duration': 0}
     try:
         vcap = cv2.VideoCapture(file)
         if vcap.isOpened():
@@ -255,9 +255,9 @@ def video_metadata(file):
                         except ValueError:
                             pass
 
-        width = width or 1
-        height = height or 1
-        duration = duration or 1
+        width = width or 0
+        height = height or 0
+        duration = duration or 0
         return {'width': width, 'height': height, 'duration': duration}
     except Exception as e:
         print(f"Error in ffprobe fallback: {e}")

@@ -23,9 +23,9 @@ from pyrogram.errors import FloodWait, RPCError, ChatAdminRequired, ChannelInval
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from devgagan import app, get_client, pro_clients
 from config import API_ID, API_HASH, OWNER_ID, LOG_GROUP, THUMBNAIL_DIR
-from devgagan.core.func import chk_user, humanbytes, TimeFormatter, video_metadata, thumbnail, add_pdf_watermark
+from devgagan.core.func import chk_user, humanbytes, TimeFormatter, video_metadata, thumbnail, add_pdf_watermark, screenshot, optimize_thumbnail
 from devgagan.core.mongo import db
-from devgagan.core.get_func import get_user_branding_tag
+from devgagan.core.get_func import get_user_branding_tag, format_caption_to_html, clean_surrogates, get_user_spoiler_preference
 
 # In-memory tracking of active topic mirroring jobs
 active_mirrors = {}
@@ -456,6 +456,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
 
         # If message contains media:
         temp_file = None
+        auto_thumb_file = None
         try:
             temp_dir = os.path.join("downloads", str(user_id))
             os.makedirs(temp_dir, exist_ok=True)
@@ -472,28 +473,70 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
             # Prepare caption with advanced cleaning & branding
             orig_cap = msg.caption if msg.caption else ""
             final_caption = await clean_and_brand_caption(user_id, orig_cap)
+            caption_html = format_caption_to_html(final_caption) if final_caption else None
 
             # Check custom thumbnail from settings
             thumb_path = thumbnail(user_id)
             file_extension = str(temp_file).split('.')[-1].lower()
 
+            # If no custom thumbnail, try downloading original thumbnail from source message
+            if not thumb_path:
+                if msg.video and getattr(msg.video, 'thumbs', None) and len(msg.video.thumbs) > 0:
+                    try:
+                        thumb_path = await userbot.download_media(msg.video.thumbs[0].file_id, file_name=f"{temp_dir}/orig_thumb_{msg.id}.jpg")
+                        auto_thumb_file = thumb_path
+                    except Exception:
+                        thumb_path = None
+                elif msg.document and getattr(msg.document, 'thumbs', None) and len(msg.document.thumbs) > 0:
+                    try:
+                        thumb_path = await userbot.download_media(msg.document.thumbs[0].file_id, file_name=f"{temp_dir}/orig_thumb_{msg.id}.jpg")
+                        auto_thumb_file = thumb_path
+                    except Exception:
+                        thumb_path = None
+
             # Video metadata & thumbnail handling
             if msg.video or file_extension in VIDEO_EXTENSIONS:
-                metadata = video_metadata(temp_file)
-                duration = metadata.get('duration', (msg.video.duration if msg.video else 0))
-                width = metadata.get('width', (msg.video.width if msg.video else 0))
-                height = metadata.get('height', (msg.video.height if msg.video else 0))
+                # Extract original dimensions and duration from msg.video if available
+                duration = msg.video.duration if (msg.video and msg.video.duration) else 0
+                width = msg.video.width if (msg.video and msg.video.width) else 0
+                height = msg.video.height if (msg.video and msg.video.height) else 0
+
+                # Fallback to file metadata if missing
+                if not duration or not width or not height:
+                    metadata = video_metadata(temp_file)
+                    if not duration and metadata.get('duration', 0) > 0:
+                        duration = metadata.get('duration', 0)
+                    if not width and metadata.get('width', 0) > 0:
+                        width = metadata.get('width', 0)
+                    if not height and metadata.get('height', 0) > 0:
+                        height = metadata.get('height', 0)
+
+                # Generate screenshot thumbnail if still missing
+                if not thumb_path:
+                    try:
+                        thumb_path = await screenshot(temp_file, duration or 10, user_id)
+                        auto_thumb_file = thumb_path
+                    except Exception as ss_err:
+                        print(f"[TopicMirror] Screenshot generation error: {ss_err}")
+                        thumb_path = None
+
+                if thumb_path and os.path.isfile(thumb_path):
+                    thumb_path = optimize_thumbnail(thumb_path)
+
+                has_spoiler = get_user_spoiler_preference(user_id)
 
                 await app.send_video(
                     chat_id=tgt_chat_id,
                     video=temp_file,
-                    caption=final_caption,
-                    duration=duration,
-                    width=width,
-                    height=height,
+                    caption=caption_html,
+                    duration=duration if duration > 0 else None,
+                    width=width if width > 0 else None,
+                    height=height if height > 0 else None,
                     thumb=thumb_path,
                     reply_to_message_id=tgt_topic_id,
-                    supports_streaming=True
+                    parse_mode=ParseMode.HTML,
+                    supports_streaming=True,
+                    has_spoiler=has_spoiler
                 )
             elif msg.document or file_extension == 'pdf':
                 # Apply PDF watermark if set in user settings
@@ -502,44 +545,56 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     if watermark_txt:
                         temp_file = add_pdf_watermark(temp_file, watermark_txt)
 
+                if thumb_path and os.path.isfile(thumb_path):
+                    thumb_path = optimize_thumbnail(thumb_path)
+
                 await app.send_document(
                     chat_id=tgt_chat_id,
                     document=temp_file,
-                    caption=final_caption,
+                    caption=caption_html,
                     thumb=thumb_path,
-                    reply_to_message_id=tgt_topic_id
+                    reply_to_message_id=tgt_topic_id,
+                    parse_mode=ParseMode.HTML
                 )
             elif msg.photo:
+                has_spoiler = get_user_spoiler_preference(user_id)
                 await app.send_photo(
                     chat_id=tgt_chat_id,
                     photo=temp_file,
-                    caption=final_caption,
-                    reply_to_message_id=tgt_topic_id
+                    caption=caption_html,
+                    reply_to_message_id=tgt_topic_id,
+                    parse_mode=ParseMode.HTML,
+                    has_spoiler=has_spoiler
                 )
             elif msg.audio:
+                if thumb_path and os.path.isfile(thumb_path):
+                    thumb_path = optimize_thumbnail(thumb_path)
                 await app.send_audio(
                     chat_id=tgt_chat_id,
                     audio=temp_file,
-                    caption=final_caption,
+                    caption=caption_html,
                     duration=msg.audio.duration or 0,
                     performer=msg.audio.performer,
                     title=msg.audio.title,
                     thumb=thumb_path,
-                    reply_to_message_id=tgt_topic_id
+                    reply_to_message_id=tgt_topic_id,
+                    parse_mode=ParseMode.HTML
                 )
             elif msg.voice:
                 await app.send_voice(
                     chat_id=tgt_chat_id,
                     voice=temp_file,
-                    caption=final_caption,
-                    reply_to_message_id=tgt_topic_id
+                    caption=caption_html,
+                    reply_to_message_id=tgt_topic_id,
+                    parse_mode=ParseMode.HTML
                 )
             elif msg.animation:
                 await app.send_animation(
                     chat_id=tgt_chat_id,
                     animation=temp_file,
-                    caption=final_caption,
-                    reply_to_message_id=tgt_topic_id
+                    caption=caption_html,
+                    reply_to_message_id=tgt_topic_id,
+                    parse_mode=ParseMode.HTML
                 )
             elif msg.sticker:
                 await app.send_sticker(
@@ -548,12 +603,15 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     reply_to_message_id=tgt_topic_id
                 )
             else:
+                if thumb_path and os.path.isfile(thumb_path):
+                    thumb_path = optimize_thumbnail(thumb_path)
                 await app.send_document(
                     chat_id=tgt_chat_id,
                     document=temp_file,
-                    caption=final_caption,
+                    caption=caption_html,
                     thumb=thumb_path,
-                    reply_to_message_id=tgt_topic_id
+                    reply_to_message_id=tgt_topic_id,
+                    parse_mode=ParseMode.HTML
                 )
 
             return True, "download_uploaded"
@@ -568,6 +626,11 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
             if temp_file and os.path.isfile(temp_file):
                 try:
                     os.remove(temp_file)
+                except Exception:
+                    pass
+            if auto_thumb_file and os.path.isfile(auto_thumb_file):
+                try:
+                    os.remove(auto_thumb_file)
                 except Exception:
                     pass
 
