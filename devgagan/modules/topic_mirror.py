@@ -207,11 +207,7 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
         return original_caption or ""
 
     # Get active branding tag (Default: '🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝')
-    branding_tag = get_user_branding_tag(user_id)
-    if not branding_tag:
-        branding_tag = "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
-    elif "⚝" not in branding_tag and "⛥" not in branding_tag:
-        branding_tag = f"{branding_tag} ⚝"
+    branding_tag = get_user_branding_tag(user_id) or "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
 
     text = original_caption or ""
     if not text:
@@ -458,27 +454,29 @@ async def get_all_target_forum_topics(userbot, app, tgt_chat_id):
     return topics_by_norm_title, topics_by_id
 
 
-async def fetch_all_messages_for_topic(userbot, src_chat_id, topic_id: int, max_limit: int = 5000):
+async def fetch_all_messages_for_topic(userbot, src_chat_id, topic_id: int, min_msg_id: int = 0, max_limit: int = 5000):
     """
-    Fetches all messages belonging to a topic using:
-    1. Pyrogram get_discussion_replies
-    2. Raw RPC messages.GetReplies
-    3. get_chat_history fallback
+    Rapidly fetches pending messages for a topic.
+    If min_msg_id > 0 (resuming from checkpoint), stops scanning immediately once older messages are reached.
     """
     collected_messages = []
     seen_ids = set()
 
-    # Strategy 1: get_discussion_replies
+    # Strategy 1: get_discussion_replies (Fastest for forum topics)
     if topic_id and topic_id != 1:
         try:
             async for m in userbot.get_discussion_replies(src_chat_id, topic_id, limit=max_limit):
-                if m and m.id not in seen_ids:
-                    seen_ids.add(m.id)
-                    collected_messages.append(m)
+                if not m or m.id in seen_ids:
+                    continue
+                # If resuming and reached older/already-saved message, stop immediately!
+                if min_msg_id > 0 and m.id <= min_msg_id:
+                    break
+                seen_ids.add(m.id)
+                collected_messages.append(m)
         except Exception as disc_err:
             print(f"[TopicMirror] get_discussion_replies notice for topic {topic_id}: {disc_err}")
 
-    # Strategy 2: Raw RPC GetReplies
+    # Strategy 2: Raw RPC GetReplies (Fallback)
     if not collected_messages and topic_id and topic_id != 1:
         try:
             peer = await userbot.resolve_peer(src_chat_id)
@@ -492,22 +490,26 @@ async def fetch_all_messages_for_topic(userbot, src_chat_id, topic_id: int, max_
                     add_offset=0,
                     limit=100,
                     max_id=0,
-                    min_id=0,
+                    min_id=min_msg_id if min_msg_id > 0 else 0,
                     hash=0
                 ))
                 raw_msgs = getattr(res, "messages", [])
                 if not raw_msgs:
                     break
                 new_found = 0
+                reached_min = False
                 for rm in raw_msgs:
+                    if min_msg_id > 0 and getattr(rm, 'id', 0) <= min_msg_id:
+                        reached_min = True
+                        break
                     parsed_m = await types.Message._parse(userbot, rm, {u.id: u for u in getattr(res, "users", [])}, {c.id: c for c in getattr(res, "chats", [])})
                     if parsed_m and parsed_m.id not in seen_ids:
                         seen_ids.add(parsed_m.id)
                         collected_messages.append(parsed_m)
                         new_found += 1
-                offset_id = raw_msgs[-1].id
-                if new_found == 0:
+                if reached_min or new_found == 0:
                     break
+                offset_id = raw_msgs[-1].id
         except Exception as rpc_err:
             print(f"[TopicMirror] Raw GetReplies notice for topic {topic_id}: {rpc_err}")
 
@@ -517,6 +519,8 @@ async def fetch_all_messages_for_topic(userbot, src_chat_id, topic_id: int, max_
             async for m in userbot.get_chat_history(src_chat_id, limit=max_limit):
                 if not m or m.id in seen_ids:
                     continue
+                if min_msg_id > 0 and m.id <= min_msg_id:
+                    break
                 if topic_id == 1:
                     m_thread = getattr(m, "message_thread_id", None)
                     reply_to = getattr(m, "reply_to_message_id", None)
@@ -843,7 +847,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
 
 
 def build_mirror_hub_keyboard(user_id: int, saved_sessions: list) -> InlineKeyboardMarkup:
-    """Builds interactive inline keyboard of saved mirror sessions for 1-click resume."""
+    """Builds interactive inline keyboard of saved mirror sessions."""
     buttons = []
     for s in saved_sessions:
         src_id = s.get("src_chat_id")
@@ -863,11 +867,21 @@ def build_mirror_hub_keyboard(user_id: int, saved_sessions: list) -> InlineKeybo
         if len(tgt_t) > 13:
             tgt_t = tgt_t[:11] + ".."
             
-        buttons.append([InlineKeyboardButton(f"🔄 Resume: {src_t} ➔ {tgt_t}", callback_data=f"tm_res_{src_id}_{tgt_id}")])
+        buttons.append([InlineKeyboardButton(f"📁 {src_t} ➔ {tgt_t}", callback_data=f"tm_opt_{src_id}_{tgt_id}")])
         
     buttons.append([InlineKeyboardButton("➕ Start New Mirror", callback_data="tm_new")])
-    buttons.append([InlineKeyboardButton("🗑️ Clear Saved Sessions", callback_data="tm_clear")])
+    buttons.append([InlineKeyboardButton("🗑️ Clear All Saved Sessions", callback_data="tm_clear")])
     return InlineKeyboardMarkup(buttons)
+
+
+def build_session_action_keyboard(src_chat_id: int, tgt_chat_id: int) -> InlineKeyboardMarkup:
+    """Builds action options for a selected saved mirror session."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("▶️ Continue / Update Mirror", callback_data=f"tm_res_{src_chat_id}_{tgt_chat_id}")],
+        [InlineKeyboardButton("✏️ Modify Target Chat ID", callback_data=f"tm_edittgt_{src_chat_id}_{tgt_chat_id}")],
+        [InlineKeyboardButton("🗑️ Delete This Session", callback_data=f"tm_delsess_{src_chat_id}_{tgt_chat_id}")],
+        [InlineKeyboardButton("🔙 Back to Sessions Hub", callback_data="tm_hub")]
+    ])
 
 
 @app.on_message(filters.command(["cancel_mirror", "cancelmirror"]))
@@ -922,6 +936,142 @@ async def skip_topic_callback(_, query: CallbackQuery):
             await query.answer("ℹ️ No active topic is running.", show_alert=True)
     else:
         await query.answer("❌ You are not authorized to skip this topic.", show_alert=True)
+
+
+@app.on_callback_query(filters.regex(r"^tm_opt_(-?\d+)_(-?\d+)$"))
+async def session_options_callback(_, query: CallbackQuery):
+    user_id = query.from_user.id
+    if await chk_user(None, user_id) != 0:
+        await query.answer("🔒 Topic Mirroring is only available for Premium users!", show_alert=True)
+        return
+    match = re.search(r"^tm_opt_(-?\d+)_(-?\d+)$", query.data)
+    src_chat_id = int(match.group(1))
+    tgt_chat_id = int(match.group(2))
+    session = await db.get_mirror_session(src_chat_id, tgt_chat_id)
+    src_title = session.get("src_title") or str(src_chat_id)
+    tgt_title = session.get("tgt_title") or str(tgt_chat_id)
+    topic_count = len(session.get("topics", {}))
+    
+    text = (
+        f"🎛️ **Mirror Session Options**\n\n"
+        f"> 📤 **Source Group:** `{src_title}` (`{src_chat_id}`)\n"
+        f"> 📥 **Target Group:** `{tgt_title}` (`{tgt_chat_id}`)\n"
+        f"> 📂 **Saved Topic Checkpoints:** `{topic_count}` topic(s) mapped\n\n"
+        f"Choose an option below to continue mirroring, change target chat ID, or delete this session:"
+    )
+    html_text = format_caption_to_html(text)
+    await query.message.edit_text(
+        html_text if html_text else text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=build_session_action_keyboard(src_chat_id, tgt_chat_id)
+    )
+
+
+@app.on_callback_query(filters.regex(r"^tm_edittgt_(-?\d+)_(-?\d+)$"))
+async def edit_target_callback(_, query: CallbackQuery):
+    user_id = query.from_user.id
+    if await chk_user(None, user_id) != 0:
+        await query.answer("🔒 Topic Mirroring is only available for Premium users!", show_alert=True)
+        return
+    match = re.search(r"^tm_edittgt_(-?\d+)_(-?\d+)$", query.data)
+    src_chat_id = int(match.group(1))
+    old_tgt_chat_id = int(match.group(2))
+    await query.answer()
+    
+    try:
+        prompt = await app.ask(
+            user_id,
+            f"📥 **Send the NEW Target Supergroup ID:**\n\n"
+            f"*(Must start with `-100`, e.g. `-100987654321`)*\n\n"
+            f"Send `/cancel` to abort.",
+            timeout=120
+        )
+    except Exception as e:
+        await app.send_message(user_id, f"❌ Request timed out: {e}")
+        return
+        
+    if prompt.text == "/cancel":
+        await app.send_message(user_id, "❌ Target modification cancelled.")
+        return
+        
+    try:
+        new_tgt_chat_id = int(prompt.text.strip().split('/')[0])
+    except ValueError:
+        await app.send_message(user_id, "❌ **Invalid ID.** Must be an integer starting with `-100`.")
+        return
+        
+    new_tgt_title = str(new_tgt_chat_id)
+    try:
+        tgt_obj = await app.get_chat(new_tgt_chat_id)
+        if tgt_obj and tgt_obj.title:
+            new_tgt_title = tgt_obj.title
+    except Exception:
+        pass
+        
+    await db.update_mirror_session_target(src_chat_id, old_tgt_chat_id, new_tgt_chat_id, new_tgt_title)
+    
+    success_text = (
+        f"✅ **Target Group Updated Successfully!**\n\n"
+        f"> 📥 **New Target:** `{new_tgt_title}` (`{new_tgt_chat_id}`)\n\n"
+        f"You can now click below to continue mirroring into the updated group:"
+    )
+    html_text = format_caption_to_html(success_text)
+    await app.send_message(
+        user_id,
+        html_text if html_text else success_text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=build_session_action_keyboard(src_chat_id, new_tgt_chat_id)
+    )
+
+
+@app.on_callback_query(filters.regex(r"^tm_delsess_(-?\d+)_(-?\d+)$"))
+async def delete_single_session_callback(_, query: CallbackQuery):
+    user_id = query.from_user.id
+    if await chk_user(None, user_id) != 0:
+        await query.answer("🔒 Topic Mirroring is only available for Premium users!", show_alert=True)
+        return
+    match = re.search(r"^tm_delsess_(-?\d+)_(-?\d+)$", query.data)
+    src_chat_id = int(match.group(1))
+    tgt_chat_id = int(match.group(2))
+    await db.delete_mirror_session(src_chat_id, tgt_chat_id)
+    await query.answer("🗑️ Session deleted!", show_alert=True)
+    
+    saved_sessions = await db.get_user_mirror_sessions(user_id)
+    if saved_sessions:
+        hub_kb = build_mirror_hub_keyboard(user_id, saved_sessions)
+        await query.message.edit_text(
+            f"🎛️ **Topic Mirroring Hub**\n\n"
+            f"Found **{len(saved_sessions)}** saved group session(s).\n"
+            f"Click any saved session to manage, continue, or start a new mirror:",
+            reply_markup=hub_kb
+        )
+    else:
+        await query.message.edit_text(
+            "ℹ️ **No saved mirror sessions remaining.**\n\nUse `/mirror` to start a fresh mirror anytime.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➕ Start New Mirror", callback_data="tm_new")]])
+        )
+
+
+@app.on_callback_query(filters.regex(r"^tm_hub$"))
+async def back_to_hub_callback(_, query: CallbackQuery):
+    user_id = query.from_user.id
+    if await chk_user(None, user_id) != 0:
+        await query.answer("🔒 Premium only!", show_alert=True)
+        return
+    saved_sessions = await db.get_user_mirror_sessions(user_id)
+    if saved_sessions:
+        hub_kb = build_mirror_hub_keyboard(user_id, saved_sessions)
+        await query.message.edit_text(
+            f"🎛️ **Topic Mirroring Hub**\n\n"
+            f"Found **{len(saved_sessions)}** saved group session(s).\n"
+            f"Click any saved session to manage, continue, or start a new mirror:",
+            reply_markup=hub_kb
+        )
+    else:
+        await query.message.edit_text(
+            "ℹ️ **No saved mirror sessions found.**\n\nClick below to start a new mirror:",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➕ Start New Mirror", callback_data="tm_new")]])
+        )
 
 
 @app.on_callback_query(filters.regex(r"^tm_res_(-?\d+)_(-?\d+)$"))
@@ -1223,8 +1373,19 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
         saved_session = await db.get_mirror_session(src_chat_id, tgt_chat_id)
         saved_topics = saved_session.get("topics", {})
 
-        # Full paginated scan of existing topics in target supergroup
-        target_topics_by_title, target_topics_by_id = await get_all_target_forum_topics(userbot, app, tgt_chat_id)
+        topic_map = {}   # src_topic_id -> tgt_topic_id
+        topic_names = {} # src_topic_id -> title
+
+        # Pre-populate already mapped topics from MongoDB immediately (Instant 0.01s resume!)
+        if saved_topics:
+            for st_id_str, info in saved_topics.items():
+                try:
+                    s_id = int(st_id_str)
+                    if info.get("tgt_topic_id"):
+                        topic_map[s_id] = info["tgt_topic_id"]
+                        topic_names[s_id] = info.get("title", f"Topic {s_id}")
+                except Exception:
+                    pass
 
         source_topics = []
         try:
@@ -1266,8 +1427,12 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
             else:
                 source_topics = [{"id": 1, "title": "General", "icon_color": None, "icon_emoji_id": None}]
 
-        topic_map = {}   # src_topic_id -> tgt_topic_id
-        topic_names = {} # src_topic_id -> title
+        # Scan target topics only if there are source topics not yet mapped in MongoDB
+        unmapped_topics = [st for st in source_topics if st["id"] not in topic_map]
+        target_topics_by_title = {}
+        target_topics_by_id = {}
+        if unmapped_topics:
+            target_topics_by_title, target_topics_by_id = await get_all_target_forum_topics(userbot, app, tgt_chat_id)
 
         for st in source_topics:
             st_id = st["id"]
@@ -1275,27 +1440,31 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
             topic_names[st_id] = st_title
             norm_title = normalize_topic_title(st_title)
 
-            # 1. General topic (id 1) always maps to target General topic (1)
+            # 1. Already mapped from MongoDB
+            if st_id in topic_map:
+                continue
+
+            # 2. General topic (id 1) always maps to target General topic (1)
             if st_id == 1 or norm_title in ("general", "1"):
                 topic_map[st_id] = 1
                 await db.save_mirror_topic_mapping(src_chat_id, tgt_chat_id, st_id, 1, st_title)
                 continue
 
-            # 2. Check persistent MongoDB session FIRST (Absolute priority)
+            # 3. Check persistent MongoDB session FIRST (Absolute priority)
             saved_info = saved_topics.get(str(st_id))
             if saved_info and saved_info.get("tgt_topic_id"):
                 existing_tgt_id = saved_info["tgt_topic_id"]
                 topic_map[st_id] = existing_tgt_id
                 continue
 
-            # 3. Check if target group already has a topic with matching title
+            # 4. Check if target group already has a topic with matching title
             if norm_title in target_topics_by_title:
                 existing_tgt_id = target_topics_by_title[norm_title]
                 topic_map[st_id] = existing_tgt_id
                 await db.save_mirror_topic_mapping(src_chat_id, tgt_chat_id, st_id, existing_tgt_id, st_title)
                 continue
 
-            # 4. Only if topic does NOT exist anywhere, create a NEW topic in target supergroup
+            # 5. Only if topic does NOT exist anywhere, create a NEW topic in target supergroup
             new_tgt_topic_id = None
             try:
                 created = await app.create_forum_topic(
@@ -1380,11 +1549,11 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
             current_state["skip_topic"] = False
             topic_stats[src_topic_id] = {"copied": 0, "failed": 0, "skipped": 0, "title": topic_title}
 
-            # Fetch messages for this topic using 3-layer thread resolution
-            all_topic_messages = await fetch_all_messages_for_topic(userbot, src_chat_id, src_topic_id)
-            
             # Check last copied message ID from MongoDB checkpoint
             saved_checkpoint = saved_topics.get(str(src_topic_id), {}).get("last_msg_id", 0)
+
+            # Rapidly fetch messages for this topic with checkpoint cutoff
+            all_topic_messages = await fetch_all_messages_for_topic(userbot, src_chat_id, src_topic_id, min_msg_id=saved_checkpoint)
             
             # Filter pending messages to copy
             messages_to_copy = [m for m in all_topic_messages if m.id > saved_checkpoint]

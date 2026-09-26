@@ -364,3 +364,18 @@ async def get_user_mirror_sessions(user_id, limit=8):
 async def delete_mirror_session(src_chat_id, tgt_chat_id):
     """Deletes a saved mirror session."""
     await mirror_db.delete_one({"_id": f"{src_chat_id}_{tgt_chat_id}"})
+
+
+async def update_mirror_session_target(src_chat_id, old_tgt_chat_id, new_tgt_chat_id, new_tgt_title=""):
+    """Updates the target chat ID and title for a saved mirror session."""
+    old_doc = await mirror_db.find_one({"_id": f"{src_chat_id}_{old_tgt_chat_id}"})
+    if old_doc:
+        old_doc["_id"] = f"{src_chat_id}_{new_tgt_chat_id}"
+        old_doc["tgt_chat_id"] = int(new_tgt_chat_id)
+        if new_tgt_title:
+            old_doc["tgt_title"] = new_tgt_title
+        old_doc["updated_at"] = datetime.datetime.now()
+        await mirror_db.delete_one({"_id": f"{src_chat_id}_{old_tgt_chat_id}"})
+        await mirror_db.insert_one(old_doc)
+        return True
+    return False
