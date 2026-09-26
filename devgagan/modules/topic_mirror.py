@@ -606,10 +606,12 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
             try:
                 raw_text = msg.text.markdown if hasattr(msg.text, 'markdown') and msg.text.markdown else (msg.text or "")
                 final_text = await clean_and_brand_caption(user_id, raw_text)
+                html_text = format_caption_to_html(final_text) if final_text else None
                 sent_txt = await app.send_message(
                     chat_id=tgt_chat_id,
-                    text=final_text if final_text else msg.text,
+                    text=html_text if html_text else (final_text or msg.text),
                     reply_to_message_id=tgt_topic_id,
+                    parse_mode=ParseMode.HTML,
                     disable_web_page_preview=True
                 )
                 log_chat = get_log_group()
@@ -1479,8 +1481,9 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
                         f" ╚═══━━━─⚝─━━━═══╝\n\n"
                         f"**__Pwrd by CHOSEN ONE ⚝__**"
                     )
+                    status_html = format_caption_to_html(status_text)
                     try:
-                        await status_msg.edit(status_text, reply_markup=control_kb)
+                        await status_msg.edit(status_html if status_html else status_text, parse_mode=ParseMode.HTML, reply_markup=control_kb)
                     except Exception:
                         pass
 
@@ -1514,10 +1517,11 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
             f"**__Pwrd by CHOSEN ONE ⚝__**"
         )
 
+        final_html = format_caption_to_html(final_report)
         try:
-            await status_msg.edit(final_report)
+            await status_msg.edit(final_html if final_html else final_report, parse_mode=ParseMode.HTML)
         except Exception:
-            await app.send_message(user_id, final_report)
+            await app.send_message(user_id, final_html if final_html else final_report, parse_mode=ParseMode.HTML)
 
         # Send Completion Report to LOG_GROUP
         log_chat = get_log_group()

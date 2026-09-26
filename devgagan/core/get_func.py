@@ -358,10 +358,10 @@ def format_caption_to_html(caption: str) -> str:
         return None
 
     # Strip any invalid surrogate characters before HTML conversion
-    caption = clean_surrogates(caption)
+    caption = clean_surrogates(str(caption))
 
     # Process multiline and single-line blockquotes starting with >
-    lines = caption.split('\n')
+    lines = caption.replace('\r\n', '\n').replace('\r', '\n').split('\n')
     new_lines = []
     in_quote = False
     quote_buf = []
@@ -372,15 +372,22 @@ def format_caption_to_html(caption: str) -> str:
             in_quote = True
             content = stripped.lstrip(">").strip()
             quote_buf.append(content)
+        elif in_quote and not stripped:
+            # Preserve empty lines inside a blockquote
+            quote_buf.append("")
         else:
             if in_quote:
-                new_lines.append(f"<blockquote>{chr(10).join(quote_buf)}</blockquote>")
+                joined_quote = '\n'.join(quote_buf).strip()
+                if joined_quote:
+                    new_lines.append(f"<blockquote>{joined_quote}</blockquote>")
                 quote_buf = []
                 in_quote = False
             new_lines.append(l)
 
     if in_quote:
-        new_lines.append(f"<blockquote>{chr(10).join(quote_buf)}</blockquote>")
+        joined_quote = '\n'.join(quote_buf).strip()
+        if joined_quote:
+            new_lines.append(f"<blockquote>{joined_quote}</blockquote>")
 
     caption = '\n'.join(new_lines)
 
@@ -962,9 +969,10 @@ async def get_msg(userbot: TelegramClient, sender: int, edit_id: int, msg_link: 
         if msg.audio:
             if not await is_enabled(sender, "audio"):
                 return
-            result = await app.send_audio(target_chat_id, file, caption=caption, reply_to_message_id=topic_id)
+            caption_html = format_caption_to_html(caption) if caption else None
+            result = await app.send_audio(target_chat_id, file, caption=caption_html, parse_mode=ParseMode.HTML, reply_to_message_id=topic_id)
             await result.copy(LOG_GROUP)
-            await check_and_auto_forward(sender, result, caption=caption)
+            await check_and_auto_forward(sender, result, caption=caption_html)
             await edit.delete(1)
             return
         
@@ -1044,11 +1052,12 @@ async def clone_message(app, msg, target_chat_id, topic_id, edit_id, log_group, 
             edit = await app.edit_message_text(msg.chat.id, edit_id, "Cloning...")
         except Exception:
             pass
-    cleaned_text = clean_text_message(msg.text.markdown, sender)
+    cleaned_text = clean_text_message(msg.text.markdown if hasattr(msg.text, 'markdown') else str(msg.text), sender)
     if not cleaned_text.strip():
         branding_tag = get_user_branding_tag(sender)
         cleaned_text = f"> **{branding_tag}**"
-    devgaganin = await app.send_message(target_chat_id, cleaned_text, reply_to_message_id=topic_id)
+    html_text = format_caption_to_html(cleaned_text)
+    devgaganin = await app.send_message(target_chat_id, html_text if html_text else cleaned_text, parse_mode=ParseMode.HTML, reply_to_message_id=topic_id)
     await devgaganin.copy(log_group)
     if edit:
         try:
@@ -1065,11 +1074,12 @@ async def clone_text_message(app, msg, target_chat_id, topic_id, edit_id, log_gr
             edit = await app.edit_message_text(msg.chat.id, edit_id, "Cloning text message...")
         except Exception:
             pass
-    cleaned_text = clean_text_message(msg.text.markdown, sender)
+    cleaned_text = clean_text_message(msg.text.markdown if hasattr(msg.text, 'markdown') else str(msg.text), sender)
     if not cleaned_text.strip():
         branding_tag = get_user_branding_tag(sender)
         cleaned_text = f"> **{branding_tag}**"
-    devgaganin = await app.send_message(target_chat_id, cleaned_text, reply_to_message_id=topic_id)
+    html_text = format_caption_to_html(cleaned_text)
+    devgaganin = await app.send_message(target_chat_id, html_text if html_text else cleaned_text, parse_mode=ParseMode.HTML, reply_to_message_id=topic_id)
     await devgaganin.copy(log_group)
     if edit:
         try:
