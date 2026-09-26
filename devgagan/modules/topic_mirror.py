@@ -104,12 +104,85 @@ def remove_chaudhary_fancy(text: str) -> str:
     return result.strip()
 
 
+def make_caption_bold(text: str) -> str:
+    """Ensures all lines in caption are styled in bold, while cleanly preserving blockquotes and YouTube URLs."""
+    if not text:
+        return text
+    lines = text.split('\n')
+    bolded_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            bolded_lines.append("")
+            continue
+        
+        # If line is a pure YouTube link, preserve it cleanly
+        if re.match(r'^https?://(?:www\.)?(?:youtube\.com|youtu\.be)/\S+$', stripped, re.IGNORECASE):
+            bolded_lines.append(stripped)
+            continue
+
+        # Preserve blockquotes "> ..."
+        if stripped.startswith("> "):
+            content = stripped[2:].strip()
+            if (content.startswith("**") and content.endswith("**")) or (content.startswith("<b>") and content.endswith("</b>")):
+                bolded_lines.append(f"> {content}")
+            else:
+                bolded_lines.append(f"> **{content}**")
+        else:
+            if (stripped.startswith("**") and stripped.endswith("**")) or (stripped.startswith("<b>") and stripped.endswith("</b>")):
+                bolded_lines.append(stripped)
+            else:
+                bolded_lines.append(f"**{stripped}**")
+                
+    return '\n'.join(bolded_lines)
+
+
+def format_document_filename(raw_filename: str) -> str:
+    """Formats document/PDF filenames with 📙 icon at start and ⚝ before extension."""
+    if not raw_filename:
+        raw_filename = "document.pdf"
+    
+    # 1. Clean Chaudhary & promoter tags
+    clean = remove_chaudhary_fancy(raw_filename)
+    clean = re.sub(r'@\w+', '', clean)
+    clean = re.sub(r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*', '', clean)
+    clean = re.sub(r'(?i)[*_]*team[\s_\-\.]*sp[ay]+[*_]*', '', clean)
+    clean = re.sub(r'(?i)[*_]*let\'?s\s*help[*_]*', '', clean)
+    clean = re.sub(r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?', '', clean)
+    
+    # 2. Replace all document/book/marker emojis with 📙
+    clean = re.sub(r'[📕📗📘📓📔📒📄📃📁📂📜📑🔴🔺🔹▪️▫️▶️]+', '📙', clean)
+    
+    # 3. Stylize brackets: () -> 〘〙, [] -> 〘〙, {} -> 〘〙
+    clean = re.sub(r'[({[]', '〘', clean)
+    clean = re.sub(r'[)}\]]', '〙', clean)
+    
+    # 4. Clean extra spaces/dashes
+    clean = re.sub(r'[ \t\-_]+', ' ', clean).strip()
+    
+    base_name, ext = os.path.splitext(clean)
+    if not ext:
+        ext = '.pdf'
+        
+    # Strip any trailing star or punctuation from base name
+    base_name = re.sub(r'[\s⚝⛥\*]+$', '', base_name).strip()
+    
+    # Ensure starts with 📙
+    if not base_name.startswith('📙'):
+        base_name = f"📙 {base_name}".strip()
+        
+    return f"{base_name} ⚝{ext}".strip()
+
+
 async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     """
     Cleans caption according to user settings:
+    - Preserves YouTube links
     - Replaces @mentions with '⚝'
-    - Replaces 'Extracted by' / 'Downloaded by' with user's branding tag (e.g. '🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝')
-    - Applies custom clean_words, replacements, and custom template caption from MongoDB
+    - Stylizes brackets () [] {} to 〘〙
+    - Replaces document emojis with 📙
+    - Replaces 'Extracted by' / 'Downloaded by' with user's branding tag
+    - Applies bold formatting across all caption lines
     """
     user_data = await db.get_data(user_id) or {}
     
@@ -134,10 +207,13 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     text = re.sub(r'[({[]', '〘', text)
     text = re.sub(r'[)}\]]', '〙', text)
 
-    # 3. Replace any @mentions (@username, @channel) with ⚝
+    # 3. Replace document/book emojis with 📙
+    text = re.sub(r'[📕📗📘📓📔📒📄📃📁📂📜📑🔴🔺🔹▪️▫️▶️]+', '📙', text)
+
+    # 4. Replace any @mentions (@username, @channel) with ⚝
     text = re.sub(r'@\w+', '⚝', text)
 
-    # 4. Replace Extracted by / Downloaded by / Uploaded by with the Branding Tag
+    # 5. Replace Extracted by / Downloaded by / Uploaded by with the Branding Tag
     extraction_pattern = r'(?i)(?:Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*'
     if re.search(extraction_pattern, text):
         text = re.sub(extraction_pattern, f"> **{branding_tag}**", text)
@@ -145,7 +221,7 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
         # Also clean generic powered by lines
         text = re.sub(r'(?i)powered\s*by[\s_:➤>–\-]*[^\n]*', f"> **{branding_tag}**", text)
 
-    # 5. Remove other unwanted promoter phrases
+    # 6. Remove other unwanted promoter phrases
     unwanted_phrases = [
         r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*',
         r'(?i)[*_]*team[\s_\-\.]*sp[ay]+[*_]*',
@@ -158,7 +234,7 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     for phrase in unwanted_phrases:
         text = re.sub(phrase, '', text)
 
-    # 6. Apply user custom clean words & text replacements from database
+    # 7. Apply user custom clean words & text replacements from database
     clean_words = user_data.get("clean_words") or []
     for word in clean_words:
         if word:
@@ -169,7 +245,7 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     if to_replace and replace_txt:
         text = text.replace(to_replace, replace_txt)
 
-    # 7. Apply custom template caption if configured
+    # 8. Apply custom template caption if configured
     custom_cap = user_data.get("caption")
     if custom_cap:
         text = f"{custom_cap}\n\n{text}".strip()
@@ -178,9 +254,12 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
         if branding_tag not in text:
             text = f"{text}\n\n> **{branding_tag}**".strip()
 
-    # 8. Normalize whitespace
+    # 9. Normalize whitespace
     text = re.sub(r'[ \t]+', ' ', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    # 10. Apply bold styling to all caption lines
+    text = make_caption_bold(text)
     return text.strip()
 
 
@@ -601,6 +680,28 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     if watermark_txt:
                         temp_file = add_pdf_watermark(temp_file, watermark_txt)
 
+                # Format and rename document file with 📙 prefix and ⚝ before extension
+                raw_filename = (msg.document.file_name if msg.document and msg.document.file_name else os.path.basename(temp_file)) or "document.pdf"
+                clean_formatted_name = format_document_filename(raw_filename)
+                
+                # Rename the downloaded temp file on disk so Pyrogram uploads with the clean name
+                renamed_path = os.path.join(os.path.dirname(temp_file), clean_formatted_name)
+                if renamed_path != temp_file:
+                    try:
+                        if os.path.exists(renamed_path):
+                            os.remove(renamed_path)
+                        os.rename(temp_file, renamed_path)
+                        temp_file = renamed_path
+                    except Exception as ren_err:
+                        print(f"[TopicMirror] File rename notice: {ren_err}")
+
+                # If no original caption, generate clean blockquote caption with formatted filename & branding
+                if not orig_cap:
+                    branding_tag = get_user_branding_tag(user_id) or "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
+                    final_caption = f"> **{clean_formatted_name}**\n\n> **{branding_tag}**"
+                    final_caption = make_caption_bold(final_caption)
+                    caption_html = format_caption_to_html(final_caption)
+
                 if thumb_path and os.path.isfile(thumb_path):
                     thumb_path = optimize_thumbnail(thumb_path)
 
@@ -691,6 +792,34 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     pass
 
 
+def build_mirror_hub_keyboard(user_id: int, saved_sessions: list) -> InlineKeyboardMarkup:
+    """Builds interactive inline keyboard of saved mirror sessions for 1-click resume."""
+    buttons = []
+    for s in saved_sessions:
+        src_id = s.get("src_chat_id")
+        tgt_id = s.get("tgt_chat_id")
+        if not src_id or not tgt_id:
+            raw_id = s.get("_id", "")
+            if "_" in raw_id:
+                parts = raw_id.split("_")
+                src_id, tgt_id = parts[0], parts[1]
+        if not src_id or not tgt_id:
+            continue
+        
+        src_t = (s.get("src_title") or f"{src_id}").strip()
+        tgt_t = (s.get("tgt_title") or f"{tgt_id}").strip()
+        if len(src_t) > 13:
+            src_t = src_t[:11] + ".."
+        if len(tgt_t) > 13:
+            tgt_t = tgt_t[:11] + ".."
+            
+        buttons.append([InlineKeyboardButton(f"🔄 Resume: {src_t} ➔ {tgt_t}", callback_data=f"tm_res_{src_id}_{tgt_id}")])
+        
+    buttons.append([InlineKeyboardButton("➕ Start New Mirror", callback_data="tm_new")])
+    buttons.append([InlineKeyboardButton("🗑️ Clear Saved Sessions", callback_data="tm_clear")])
+    return InlineKeyboardMarkup(buttons)
+
+
 @app.on_message(filters.command(["cancel_mirror", "cancelmirror"]))
 async def cancel_mirror_cmd(_, message):
     user_id = message.from_user.id if message.from_user else message.chat.id
@@ -745,23 +874,60 @@ async def skip_topic_callback(_, query: CallbackQuery):
         await query.answer("❌ You are not authorized to skip this topic.", show_alert=True)
 
 
-@app.on_message(filters.command(["topicmirror", "tmirror", "mirror"]))
-async def topic_mirror_cmd(client, message):
-    if not message.from_user:
-        await message.reply("❌ **Error:** This command must be sent by a user.")
+@app.on_callback_query(filters.regex(r"^tm_res_(-?\d+)_(-?\d+)$"))
+async def resume_session_callback(_, query: CallbackQuery):
+    user_id = query.from_user.id
+    match = re.search(r"^tm_res_(-?\d+)_(-?\d+)$", query.data)
+    if not match:
+        await query.answer("❌ Invalid session data.", show_alert=True)
         return
-
-    user_id = message.from_user.id
-
-    # Check Premium/Owner Authorization
-    if await chk_user(message, user_id) != 0:
-        await message.reply("❌ **Access Denied:** You need an active premium plan or owner access to use Topic Mirror.")
-        return
-
+        
+    src_chat_id = int(match.group(1))
+    tgt_chat_id = int(match.group(2))
+    
     if user_id in active_mirrors and isinstance(active_mirrors[user_id], dict) and active_mirrors[user_id].get("running"):
-        await message.reply("⚠️ **A mirroring operation is already running!** Send `/cancel_mirror` to abort it first.")
+        await query.answer("⚠️ A mirror task is already running!", show_alert=True)
         return
+        
+    await query.answer("🚀 Resuming mirror session...")
+    await run_topic_mirror(
+        user_id=user_id,
+        src_chat_id=src_chat_id,
+        tgt_chat_id=tgt_chat_id,
+        mirror_all_topics=True,
+        detected_topic_id=None,
+        status_msg=query.message
+    )
 
+
+@app.on_callback_query(filters.regex(r"^tm_new$"))
+async def new_mirror_callback(_, query: CallbackQuery):
+    user_id = query.from_user.id
+    if user_id in active_mirrors and isinstance(active_mirrors[user_id], dict) and active_mirrors[user_id].get("running"):
+        await query.answer("⚠️ A mirror task is already running!", show_alert=True)
+        return
+    await query.answer()
+    await start_new_mirror_flow(user_id, query.message, is_callback=True)
+
+
+@app.on_callback_query(filters.regex(r"^tm_clear$"))
+async def clear_sessions_callback(_, query: CallbackQuery):
+    user_id = query.from_user.id
+    saved = await db.get_user_mirror_sessions(user_id)
+    for s in saved:
+        raw_id = s.get("_id", "")
+        if "_" in raw_id:
+            p = raw_id.split("_")
+            await db.delete_mirror_session(p[0], p[1])
+    await query.answer("🗑️ All saved mirror sessions cleared!", show_alert=True)
+    await query.message.edit_text(
+        "🗑️ **All saved mirror sessions have been cleared.**\n\nUse `/mirror` to start a new mirror session anytime.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➕ Start New Mirror", callback_data="tm_new")]])
+    )
+
+
+async def start_new_mirror_flow(user_id: int, message, is_callback: bool = False):
+    """Interactive flow to configure and launch a new topic mirror session."""
     # STEP 1: Ask for Source Message/Topic Link
     try:
         prompt_1 = await app.ask(
@@ -772,10 +938,11 @@ async def topic_mirror_cmd(client, message):
             timeout=180
         )
     except Exception as e:
-        await message.reply(
-            "❌ **Interactive Prompt Failed:**\n"
-            "Please start the bot first in private DM (@" + (await app.get_me()).username + ") to configure prompts!"
-        )
+        err_text = "❌ **Interactive Prompt Failed:**\nPlease start the bot first in private DM (@" + (await app.get_me()).username + ") to configure prompts!"
+        if is_callback:
+            await app.send_message(user_id, err_text)
+        else:
+            await message.reply(err_text)
         return
 
     if prompt_1.text == "/cancel":
@@ -842,13 +1009,68 @@ async def topic_mirror_cmd(client, message):
         except Exception:
             mirror_all_topics = True
 
+    await run_topic_mirror(
+        user_id=user_id,
+        src_chat_id=src_chat_id,
+        tgt_chat_id=tgt_chat_id,
+        mirror_all_topics=mirror_all_topics,
+        detected_topic_id=detected_topic_id
+    )
+
+
+@app.on_message(filters.command(["topicmirror", "tmirror", "mirror"]))
+async def topic_mirror_cmd(client, message):
+    if not message.from_user:
+        await message.reply("❌ **Error:** This command must be sent by a user.")
+        return
+
+    user_id = message.from_user.id
+
+    # Check Premium/Owner Authorization
+    if await chk_user(message, user_id) != 0:
+        await message.reply("❌ **Access Denied:** You need an active premium plan or owner access to use Topic Mirror.")
+        return
+
+    if user_id in active_mirrors and isinstance(active_mirrors[user_id], dict) and active_mirrors[user_id].get("running"):
+        await message.reply("⚠️ **A mirroring operation is already running!** Send `/cancel_mirror` to abort it first.")
+        return
+
+    # Check for existing saved mirror sessions
+    saved_sessions = await db.get_user_mirror_sessions(user_id)
+    if saved_sessions:
+        hub_kb = build_mirror_hub_keyboard(user_id, saved_sessions)
+        await message.reply(
+            f"🎛️ **Topic Mirroring Hub**\n\n"
+            f"Found **{len(saved_sessions)}** saved group session(s).\n"
+            f"Click a button below to **instantly resume/update pending topics**, or start a new mirror:",
+            reply_markup=hub_kb
+        )
+    else:
+        await start_new_mirror_flow(user_id, message)
+
+
+async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mirror_all_topics: bool = True, detected_topic_id: int = None, status_msg=None):
+    """Core execution engine for topic mirroring with instant resume and rapid extraction."""
     control_kb = get_mirror_keyboard(user_id)
 
-    status_msg = await app.send_message(
-        user_id,
-        "🔄 **Initializing Userbot Session & Verifying Group Access...**",
-        reply_markup=control_kb
-    )
+    if status_msg:
+        try:
+            await status_msg.edit(
+                "🔄 **Initializing Userbot Session & Verifying Group Access...**",
+                reply_markup=control_kb
+            )
+        except Exception:
+            status_msg = await app.send_message(
+                user_id,
+                "🔄 **Initializing Userbot Session & Verifying Group Access...**",
+                reply_markup=control_kb
+            )
+    else:
+        status_msg = await app.send_message(
+            user_id,
+            "🔄 **Initializing Userbot Session & Verifying Group Access...**",
+            reply_markup=control_kb
+        )
 
     userbot, is_temp_userbot = await get_working_userbot(user_id)
     if not userbot:
@@ -895,7 +1117,10 @@ async def topic_mirror_cmd(client, message):
                 tabs=False
             ))
         except Exception as tf_err:
-            print(f"[TopicMirror] ToggleForum notice: {tf_err}")
+            pass
+
+        # Save session metadata for instant resume buttons
+        await db.save_mirror_session_info(user_id, src_chat_id, tgt_chat_id, src_title, tgt_title)
 
         await status_msg.edit(
             f"🔍 **Phase 1: Scanning Topics & Checking Existing Mappings...**\n\n"
@@ -923,7 +1148,6 @@ async def topic_mirror_cmd(client, message):
                     "icon_emoji_id": getattr(forum_topic, "icon_emoji_id", None)
                 })
         except Exception as scan_err:
-            print(f"[TopicMirror] Pyrogram get_forum_topics scan fallback: {scan_err}")
             try:
                 peer = await userbot.resolve_peer(src_chat_id)
                 res = await userbot.invoke(raw.functions.messages.GetForumTopics(
@@ -974,7 +1198,6 @@ async def topic_mirror_cmd(client, message):
             if saved_info and saved_info.get("tgt_topic_id"):
                 existing_tgt_id = saved_info["tgt_topic_id"]
                 topic_map[st_id] = existing_tgt_id
-                print(f"[TopicMirror] Reusing MongoDB mapped topic: '{st_title}' ({st_id} -> {existing_tgt_id})")
                 continue
 
             # 3. Check if target group already has a topic with matching title
@@ -982,7 +1205,6 @@ async def topic_mirror_cmd(client, message):
                 existing_tgt_id = target_topics_by_title[norm_title]
                 topic_map[st_id] = existing_tgt_id
                 await db.save_mirror_topic_mapping(src_chat_id, tgt_chat_id, st_id, existing_tgt_id, st_title)
-                print(f"[TopicMirror] Matched existing target topic by title: '{st_title}' -> {existing_tgt_id}")
                 continue
 
             # 4. Only if topic does NOT exist anywhere, create a NEW topic in target supergroup
@@ -997,8 +1219,7 @@ async def topic_mirror_cmd(client, message):
                 new_tgt_topic_id = created.message_thread_id
                 target_topics_by_title[norm_title] = new_tgt_topic_id
                 target_topics_by_id[new_tgt_topic_id] = st_title
-            except Exception as create_err:
-                print(f"[TopicMirror] High-level create topic failed for '{st_title}': {create_err}. Trying raw RPC...")
+            except Exception:
                 try:
                     peer = await app.resolve_peer(tgt_chat_id)
                     res = await app.invoke(raw.functions.messages.CreateForumTopic(
@@ -1022,16 +1243,14 @@ async def topic_mirror_cmd(client, message):
             final_mapped_id = new_tgt_topic_id if new_tgt_topic_id else 1
             topic_map[st_id] = final_mapped_id
             await db.save_mirror_topic_mapping(src_chat_id, tgt_chat_id, st_id, final_mapped_id, st_title)
-            await asyncio.sleep(0.3)
 
         total_topics_count = len(topic_map)
         await status_msg.edit(
-            f"✅ **Phase 1 Complete:** Discovered & Mapped `{total_topics_count}` Topics (0 Duplicates)!\n\n"
-            f"🚀 **Starting Phase 2:** Extracting & Mirroring pending messages topic-by-topic...\n\n"
+            f"✅ **Phase 1 Complete:** Mapped `{total_topics_count}` Topics (0 Duplicates)!\n\n"
+            f"⚡ **Starting Rapid Extraction:** Mirroring pending messages...\n\n"
             f"*(Use buttons below to Skip Topic or Cancel Mirror)*",
             reply_markup=control_kb
         )
-        await asyncio.sleep(1.5)
 
         # -------------------------------------------------------------
         # PHASE 2: EXTRACT & MIRROR MESSAGES TOPIC BY TOPIC (WITH RESUME)
@@ -1074,10 +1293,8 @@ async def topic_mirror_cmd(client, message):
                 print(f"[TopicMirror] Topic '{topic_title}' already up to date ({already_done_count} msgs). Skipping.")
                 continue
 
-            # Calculate total payload bytes in this topic for accurate transfer speed & size display
-            topic_total_bytes = sum(get_msg_size(m) for m in messages_to_copy)
+            # Instant Extraction Start without heavy pre-loop file sizing
             topic_copied_bytes = 0
-
             last_edit_time = time.time()
             topic_start_time = time.time()
 
@@ -1129,22 +1346,21 @@ async def topic_mirror_cmd(client, message):
                     
                     # Calculate real data speed (MB/s / KB/s)
                     speed_bytes_sec = (topic_copied_bytes / topic_elapsed) if topic_elapsed > 0 else 0
-                    speed_str = f"{humanbytes(speed_bytes_sec)}/s" if speed_bytes_sec > 0 else "Calculating..."
+                    if speed_bytes_sec > 1024:
+                        speed_str = f"{humanbytes(speed_bytes_sec)}/s"
+                    else:
+                        speed_msgs = (idx / topic_elapsed) if topic_elapsed > 0 else 0
+                        speed_str = f"{speed_msgs:.2f} msg/s"
                     
                     percent = int((idx / total_msgs_in_topic) * 100) if total_msgs_in_topic > 0 else 0
                     bar_blocks = int(percent // 10)
                     progress_bar_str = "▰" * bar_blocks + "▱" * (10 - bar_blocks)
                     
-                    # ETA calculation
+                    # Dynamic ETA calculation based on messages processed
                     remaining_msgs = total_msgs_in_topic - idx
-                    if speed_bytes_sec > 0 and topic_total_bytes > topic_copied_bytes:
-                        eta_seconds = (topic_total_bytes - topic_copied_bytes) / speed_bytes_sec
-                    else:
-                        speed_msgs = (idx / topic_elapsed) if topic_elapsed > 0 else 0
-                        eta_seconds = (remaining_msgs / speed_msgs) if speed_msgs > 0 else 0
+                    speed_msgs = (idx / topic_elapsed) if topic_elapsed > 0 else 0
+                    eta_seconds = (remaining_msgs / speed_msgs) if speed_msgs > 0 else 0
                     eta_str = TimeFormatter(int(eta_seconds * 1000)) if eta_seconds > 0 else "00:00:00"
-
-                    size_info = f"{humanbytes(topic_copied_bytes)} / {humanbytes(topic_total_bytes)}" if topic_total_bytes > 0 else f"{idx}/{total_msgs_in_topic} msgs"
 
                     status_text = (
                         f"╔══━⚡️ **Topic Mirroring in Progress** ⚡️━══╗\n"
@@ -1153,7 +1369,6 @@ async def topic_mirror_cmd(client, message):
                         f"> 📥 **Routing To:** `{tgt_title} → {topic_title}`\n\n"
                         f"> 📊 **Topic Progress:** {progress_bar_str} `{percent}%`\n"
                         f"> 🔢 **Pending Messages:** `{idx}/{total_msgs_in_topic}`\n"
-                        f"> 💾 **Topic Data:** `{size_info}`\n"
                         f"> ⚡ **Transfer Speed:** `{speed_str}`\n"
                         f"> ⏳ **Topic ETA:** `{eta_str}`\n\n"
                         f"> ✅ **New Copied:** `{overall_copied}` | ⏩ **Resumed/Skipped:** `{overall_skipped}`\n"
@@ -1166,7 +1381,7 @@ async def topic_mirror_cmd(client, message):
                     except Exception:
                         pass
 
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(0.1)
 
         # -------------------------------------------------------------
         # FINAL REPORT DASHBOARD

@@ -1212,11 +1212,17 @@ async def copy_message_with_chat_id(app, userbot, sender, chat_id, message_id, e
             clean_filename_base = re.sub(r'(?i)[*_]*team[\s_\-\.]*spay[*_]*', '', clean_filename_base)
             clean_filename_base = re.sub(r'(?i)[*_]*let\'?s\s*help[*_]*', '', clean_filename_base)
             clean_filename_base = re.sub(r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?', '', clean_filename_base)
+            clean_filename_base = re.sub(r'[📕📗📘📓📔📒📄📃📁📂📜📑🔴🔺🔹▪️▫️▶️]+', '📙', clean_filename_base)
+            clean_filename_base = re.sub(r'[({[]', '〘', clean_filename_base)
+            clean_filename_base = re.sub(r'[)}\]]', '〙', clean_filename_base)
             clean_filename_base = re.sub(r'[ \-_]+', ' ', clean_filename_base).strip()
             
             base_name, ext = os.path.splitext(clean_filename_base)
             if ext.lower() != '.pdf':
                 ext = '.pdf'
+            base_name = re.sub(r'[\s⚝⛥\*]+$', '', base_name).strip()
+            if not base_name.startswith('📙'):
+                base_name = f"📙 {base_name}".strip()
             tag = get_user_branding_tag(sender)
             formatted_filename = f"{base_name.strip()} ⚝{ext}".strip()
             final_caption = f"> **{formatted_filename}**\n\n> **{tag}**"

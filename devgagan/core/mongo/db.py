@@ -333,3 +333,34 @@ async def update_mirror_topic_checkpoint(src_chat_id, tgt_chat_id, src_topic_id,
 async def reset_mirror_session(src_chat_id, tgt_chat_id):
     """Resets progress checkpoints for a source-target mirror session."""
     await mirror_db.delete_one({"_id": f"{src_chat_id}_{tgt_chat_id}"})
+
+async def save_mirror_session_info(user_id, src_chat_id, tgt_chat_id, src_title, tgt_title):
+    """Saves session metadata for quick resume buttons."""
+    await mirror_db.update_one(
+        {"_id": f"{src_chat_id}_{tgt_chat_id}"},
+        {
+            "$set": {
+                "user_id": user_id,
+                "src_chat_id": src_chat_id,
+                "tgt_chat_id": tgt_chat_id,
+                "src_title": src_title,
+                "tgt_title": tgt_title,
+                "updated_at": datetime.datetime.now()
+            }
+        },
+        upsert=True
+    )
+
+async def get_user_mirror_sessions(user_id, limit=8):
+    """Retrieves all saved mirror sessions for a user, sorted by last updated."""
+    cursor = mirror_db.find(
+        {"$or": [{"user_id": user_id}, {"user_id": {"$exists": False}}]}
+    ).sort("updated_at", -1).limit(limit)
+    sessions = []
+    async for doc in cursor:
+        sessions.append(doc)
+    return sessions
+
+async def delete_mirror_session(src_chat_id, tgt_chat_id):
+    """Deletes a saved mirror session."""
+    await mirror_db.delete_one({"_id": f"{src_chat_id}_{tgt_chat_id}"})
