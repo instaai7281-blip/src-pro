@@ -130,10 +130,14 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     # 1. Clean Chaudhary & fancy characters
     text = remove_chaudhary_fancy(text)
 
-    # 2. Replace any @mentions (@username, @channel) with ⚝
+    # 2. Stylize default brackets: () -> 〘〙, [] -> 〘〙, {} -> 〘〙
+    text = re.sub(r'[({[]', '〘', text)
+    text = re.sub(r'[)}\]]', '〙', text)
+
+    # 3. Replace any @mentions (@username, @channel) with ⚝
     text = re.sub(r'@\w+', '⚝', text)
 
-    # 3. Replace Extracted by / Downloaded by / Uploaded by with the Branding Tag
+    # 4. Replace Extracted by / Downloaded by / Uploaded by with the Branding Tag
     extraction_pattern = r'(?i)(?:Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*'
     if re.search(extraction_pattern, text):
         text = re.sub(extraction_pattern, f"> **{branding_tag}**", text)
@@ -141,7 +145,7 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
         # Also clean generic powered by lines
         text = re.sub(r'(?i)powered\s*by[\s_:➤>–\-]*[^\n]*', f"> **{branding_tag}**", text)
 
-    # 4. Remove other unwanted promoter phrases
+    # 5. Remove other unwanted promoter phrases
     unwanted_phrases = [
         r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*',
         r'(?i)[*_]*team[\s_\-\.]*sp[ay]+[*_]*',
@@ -154,7 +158,7 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     for phrase in unwanted_phrases:
         text = re.sub(phrase, '', text)
 
-    # 5. Apply user custom clean words & text replacements from database
+    # 6. Apply user custom clean words & text replacements from database
     clean_words = user_data.get("clean_words") or []
     for word in clean_words:
         if word:
@@ -165,7 +169,7 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     if to_replace and replace_txt:
         text = text.replace(to_replace, replace_txt)
 
-    # 6. Apply custom template caption if configured
+    # 7. Apply custom template caption if configured
     custom_cap = user_data.get("caption")
     if custom_cap:
         text = f"{custom_cap}\n\n{text}".strip()
@@ -174,7 +178,7 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
         if branding_tag not in text:
             text = f"{text}\n\n> **{branding_tag}**".strip()
 
-    # 7. Normalize whitespace
+    # 8. Normalize whitespace
     text = re.sub(r'[ \t]+', ' ', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
@@ -253,56 +257,108 @@ async def get_working_userbot(user_id: int):
     return None, False
 
 
-async def get_all_target_forum_topics(client, tgt_chat_id):
-    """
-    Scans ALL existing forum topics in target supergroup with full pagination
-    to ensure zero duplicate topic creations.
-    Returns: (topics_by_title_lower, topics_by_id)
-    """
-    topics_by_title = {}  # lowercase title -> topic_id
-    topics_by_id = {}     # topic_id -> title
+def normalize_topic_title(title: str) -> str:
+    """Normalizes topic title for robust matching across spaces, casing, emojis and punctuation."""
+    if not title:
+        return ""
+    clean = unicodedata.normalize('NFKD', str(title)).lower()
+    clean = re.sub(r'[\s_\-\.\:\(\)\[\]\/\#\*\+]+', ' ', clean).strip()
+    return clean
 
+
+def get_msg_size(msg) -> int:
+    """Safely calculates the payload size of a Telegram message in bytes."""
+    if not msg:
+        return 0
     try:
-        async for t in client.get_forum_topics(tgt_chat_id):
-            if t and getattr(t, "title", None):
-                t_title = t.title.strip().lower()
-                topics_by_title[t_title] = t.message_thread_id
-                topics_by_id[t.message_thread_id] = t.title
-    except Exception as e:
-        print(f"[TopicMirror] get_forum_topics scan notice: {e}")
+        if msg.video and getattr(msg.video, "file_size", None):
+            return int(msg.video.file_size)
+        if msg.document and getattr(msg.document, "file_size", None):
+            return int(msg.document.file_size)
+        if msg.audio and getattr(msg.audio, "file_size", None):
+            return int(msg.audio.file_size)
+        if msg.photo and getattr(msg.photo, "file_size", None):
+            return int(msg.photo.file_size)
+        if msg.voice and getattr(msg.voice, "file_size", None):
+            return int(msg.voice.file_size)
+        if msg.text:
+            return len(msg.text.encode('utf-8'))
+        if msg.caption:
+            return len(msg.caption.encode('utf-8'))
+    except Exception:
+        pass
+    return 0
 
-    # Paginated Raw RPC fallback to guarantee fetching every single topic
-    try:
-        peer = await client.resolve_peer(tgt_chat_id)
-        offset_date = 0
-        offset_id = 0
-        offset_topic = 0
-        while True:
-            res = await client.invoke(raw.functions.messages.GetForumTopics(
-                peer=peer,
-                offset_date=offset_date,
-                offset_id=offset_id,
-                offset_topic=offset_topic,
-                limit=100
-            ))
-            topics = getattr(res, "topics", [])
-            if not topics:
-                break
-            for t in topics:
-                if not getattr(t, "id", None):
-                    continue
-                t_title = getattr(t, "title", "").strip().lower()
-                topics_by_title[t_title] = t.id
-                topics_by_id[t.id] = getattr(t, "title", "")
-                offset_date = getattr(t, "date", 0)
-                offset_id = t.id
-                offset_topic = t.id
-            if len(topics) < 100:
-                break
-    except Exception as rpc_err:
-        print(f"[TopicMirror] Raw GetForumTopics pagination notice: {rpc_err}")
 
-    return topics_by_title, topics_by_id
+def get_mirror_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Generates the interactive control keyboard with Skip Topic and Cancel Mirror."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⏭ Skip Topic", callback_data=f"tmirror_skip_{user_id}"),
+            InlineKeyboardButton("🛑 Cancel Mirror", callback_data=f"tmirror_cancel_{user_id}")
+        ]
+    ])
+
+
+async def get_all_target_forum_topics(userbot, app, tgt_chat_id):
+    """
+    Scans ALL existing forum topics in target supergroup trying both userbot and app.
+    Returns: (topics_by_normalized_title, topics_by_id)
+    """
+    topics_by_norm_title = {}
+    topics_by_id = {}
+
+    clients_to_try = []
+    if userbot:
+        clients_to_try.append(userbot)
+    if app and app not in clients_to_try:
+        clients_to_try.append(app)
+
+    for client in clients_to_try:
+        try:
+            async for t in client.get_forum_topics(tgt_chat_id):
+                if t and getattr(t, "title", None) and getattr(t, "message_thread_id", None):
+                    norm = normalize_topic_title(t.title)
+                    topics_by_norm_title[norm] = t.message_thread_id
+                    topics_by_id[t.message_thread_id] = t.title
+        except Exception as e:
+            print(f"[TopicMirror] client.get_forum_topics scan notice: {e}")
+
+        try:
+            peer = await client.resolve_peer(tgt_chat_id)
+            offset_date = 0
+            offset_id = 0
+            offset_topic = 0
+            while True:
+                res = await client.invoke(raw.functions.messages.GetForumTopics(
+                    peer=peer,
+                    offset_date=offset_date,
+                    offset_id=offset_id,
+                    offset_topic=offset_topic,
+                    limit=100
+                ))
+                topics = getattr(res, "topics", [])
+                if not topics:
+                    break
+                for t in topics:
+                    if not getattr(t, "id", None):
+                        continue
+                    t_title = getattr(t, "title", "")
+                    norm = normalize_topic_title(t_title)
+                    topics_by_norm_title[norm] = t.id
+                    topics_by_id[t.id] = t_title
+                    offset_date = getattr(t, "date", 0)
+                    offset_id = t.id
+                    offset_topic = t.id
+                if len(topics) < 100:
+                    break
+        except Exception as rpc_err:
+            print(f"[TopicMirror] Raw GetForumTopics pagination notice: {rpc_err}")
+
+        if topics_by_norm_title:
+            break
+
+    return topics_by_norm_title, topics_by_id
 
 
 async def fetch_all_messages_for_topic(userbot, src_chat_id, topic_id: int, max_limit: int = 5000):
@@ -639,10 +695,23 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
 async def cancel_mirror_cmd(_, message):
     user_id = message.from_user.id if message.from_user else message.chat.id
     if user_id in active_mirrors:
-        active_mirrors[user_id] = False
+        if isinstance(active_mirrors[user_id], dict):
+            active_mirrors[user_id]["running"] = False
+        else:
+            active_mirrors[user_id] = False
         await message.reply("🛑 **Cancellation signal sent.** Topic mirror operation will stop shortly.")
     else:
         await message.reply("ℹ️ You have no active topic mirroring process running.")
+
+
+@app.on_message(filters.command(["skip_topic", "skiptopic"]))
+async def skip_topic_cmd(_, message):
+    user_id = message.from_user.id if message.from_user else message.chat.id
+    if user_id in active_mirrors and isinstance(active_mirrors[user_id], dict) and active_mirrors[user_id].get("running"):
+        active_mirrors[user_id]["skip_topic"] = True
+        await message.reply("⏭ **Topic skip signal sent.** Moving to the next topic shortly.")
+    else:
+        await message.reply("ℹ️ No active topic mirroring process in progress to skip.")
 
 
 @app.on_callback_query(filters.regex(r"^tmirror_cancel_(\d+)$"))
@@ -651,10 +720,29 @@ async def cancel_mirror_callback(_, query: CallbackQuery):
     user_id = query.from_user.id
     owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
     if user_id == req_uid or str(user_id) in [str(o) for o in owner_list]:
-        active_mirrors[req_uid] = False
+        if req_uid in active_mirrors:
+            if isinstance(active_mirrors[req_uid], dict):
+                active_mirrors[req_uid]["running"] = False
+            else:
+                active_mirrors[req_uid] = False
         await query.answer("🛑 Cancelling topic mirror process...", show_alert=True)
     else:
         await query.answer("❌ You are not authorized to cancel this task.", show_alert=True)
+
+
+@app.on_callback_query(filters.regex(r"^tmirror_skip_(\d+)$"))
+async def skip_topic_callback(_, query: CallbackQuery):
+    req_uid = int(query.data.split("_")[2])
+    user_id = query.from_user.id
+    owner_list = OWNER_ID if isinstance(OWNER_ID, list) else [OWNER_ID]
+    if user_id == req_uid or str(user_id) in [str(o) for o in owner_list]:
+        if req_uid in active_mirrors and isinstance(active_mirrors[req_uid], dict) and active_mirrors[req_uid].get("running"):
+            active_mirrors[req_uid]["skip_topic"] = True
+            await query.answer("⏭ Skipping current topic... Moving to next topic!", show_alert=True)
+        else:
+            await query.answer("ℹ️ No active topic is running.", show_alert=True)
+    else:
+        await query.answer("❌ You are not authorized to skip this topic.", show_alert=True)
 
 
 @app.on_message(filters.command(["topicmirror", "tmirror", "mirror"]))
@@ -670,7 +758,7 @@ async def topic_mirror_cmd(client, message):
         await message.reply("❌ **Access Denied:** You need an active premium plan or owner access to use Topic Mirror.")
         return
 
-    if user_id in active_mirrors and active_mirrors[user_id]:
+    if user_id in active_mirrors and isinstance(active_mirrors[user_id], dict) and active_mirrors[user_id].get("running"):
         await message.reply("⚠️ **A mirroring operation is already running!** Send `/cancel_mirror` to abort it first.")
         return
 
@@ -754,12 +842,12 @@ async def topic_mirror_cmd(client, message):
         except Exception:
             mirror_all_topics = True
 
-    cancel_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🛑 Cancel Mirroring", callback_data=f"tmirror_cancel_{user_id}")]])
+    control_kb = get_mirror_keyboard(user_id)
 
     status_msg = await app.send_message(
         user_id,
         "🔄 **Initializing Userbot Session & Verifying Group Access...**",
-        reply_markup=cancel_btn
+        reply_markup=control_kb
     )
 
     userbot, is_temp_userbot = await get_working_userbot(user_id)
@@ -770,7 +858,11 @@ async def topic_mirror_cmd(client, message):
         )
         return
 
-    active_mirrors[user_id] = True
+    active_mirrors[user_id] = {
+        "running": True,
+        "skip_topic": False,
+        "current_topic": ""
+    }
 
     try:
         # Resolve source chat
@@ -809,18 +901,17 @@ async def topic_mirror_cmd(client, message):
             f"🔍 **Phase 1: Scanning Topics & Checking Existing Mappings...**\n\n"
             f"📤 **Source:** `{src_title}`\n"
             f"📥 **Target:** `{tgt_title}`",
-            reply_markup=cancel_btn
+            reply_markup=control_kb
         )
 
         # -------------------------------------------------------------
         # PHASE 1: DISCOVER SOURCE TOPICS & MAP WITHOUT DUPLICATES
         # -------------------------------------------------------------
-        # Load persistent mirror session from database
         saved_session = await db.get_mirror_session(src_chat_id, tgt_chat_id)
         saved_topics = saved_session.get("topics", {})
 
         # Full paginated scan of existing topics in target supergroup
-        target_topics_by_title, target_topics_by_id = await get_all_target_forum_topics(app, tgt_chat_id)
+        target_topics_by_title, target_topics_by_id = await get_all_target_forum_topics(userbot, app, tgt_chat_id)
 
         source_topics = []
         try:
@@ -870,27 +961,28 @@ async def topic_mirror_cmd(client, message):
             st_id = st["id"]
             st_title = st["title"].strip()
             topic_names[st_id] = st_title
+            norm_title = normalize_topic_title(st_title)
 
-            # 1. General topic (id 1) always maps to target General topic (1 or None)
-            if st_id == 1 or st_title.lower() == "general":
+            # 1. General topic (id 1) always maps to target General topic (1)
+            if st_id == 1 or norm_title in ("general", "1"):
                 topic_map[st_id] = 1
                 await db.save_mirror_topic_mapping(src_chat_id, tgt_chat_id, st_id, 1, st_title)
                 continue
 
-            # 2. Check if already saved in MongoDB session and valid in target
+            # 2. Check persistent MongoDB session FIRST (Absolute priority)
             saved_info = saved_topics.get(str(st_id))
             if saved_info and saved_info.get("tgt_topic_id"):
-                candidate_id = saved_info["tgt_topic_id"]
-                if candidate_id in target_topics_by_id or candidate_id == 1:
-                    topic_map[st_id] = candidate_id
-                    continue
+                existing_tgt_id = saved_info["tgt_topic_id"]
+                topic_map[st_id] = existing_tgt_id
+                print(f"[TopicMirror] Reusing MongoDB mapped topic: '{st_title}' ({st_id} -> {existing_tgt_id})")
+                continue
 
-            # 3. Check if topic with identical title already exists in target supergroup
-            lower_title = st_title.lower()
-            if lower_title in target_topics_by_title:
-                existing_tgt_id = target_topics_by_title[lower_title]
+            # 3. Check if target group already has a topic with matching title
+            if norm_title in target_topics_by_title:
+                existing_tgt_id = target_topics_by_title[norm_title]
                 topic_map[st_id] = existing_tgt_id
                 await db.save_mirror_topic_mapping(src_chat_id, tgt_chat_id, st_id, existing_tgt_id, st_title)
+                print(f"[TopicMirror] Matched existing target topic by title: '{st_title}' -> {existing_tgt_id}")
                 continue
 
             # 4. Only if topic does NOT exist anywhere, create a NEW topic in target supergroup
@@ -903,7 +995,7 @@ async def topic_mirror_cmd(client, message):
                     icon_emoji_id=st.get("icon_emoji_id")
                 )
                 new_tgt_topic_id = created.message_thread_id
-                target_topics_by_title[lower_title] = new_tgt_topic_id
+                target_topics_by_title[norm_title] = new_tgt_topic_id
                 target_topics_by_id[new_tgt_topic_id] = st_title
             except Exception as create_err:
                 print(f"[TopicMirror] High-level create topic failed for '{st_title}': {create_err}. Trying raw RPC...")
@@ -922,7 +1014,7 @@ async def topic_mirror_cmd(client, message):
                             new_tgt_topic_id = upd.id
                             break
                     if new_tgt_topic_id:
-                        target_topics_by_title[lower_title] = new_tgt_topic_id
+                        target_topics_by_title[norm_title] = new_tgt_topic_id
                         target_topics_by_id[new_tgt_topic_id] = st_title
                 except Exception as rpc_create_err:
                     print(f"[TopicMirror] Raw CreateForumTopic error for '{st_title}': {rpc_create_err}")
@@ -936,8 +1028,8 @@ async def topic_mirror_cmd(client, message):
         await status_msg.edit(
             f"✅ **Phase 1 Complete:** Discovered & Mapped `{total_topics_count}` Topics (0 Duplicates)!\n\n"
             f"🚀 **Starting Phase 2:** Extracting & Mirroring pending messages topic-by-topic...\n\n"
-            f"*(Click below or send `/cancel_mirror` at any time to stop)*",
-            reply_markup=cancel_btn
+            f"*(Use buttons below to Skip Topic or Cancel Mirror)*",
+            reply_markup=control_kb
         )
         await asyncio.sleep(1.5)
 
@@ -947,17 +1039,21 @@ async def topic_mirror_cmd(client, message):
         overall_copied = 0
         overall_failed = 0
         overall_skipped = 0
+        overall_transferred_bytes = 0
         topic_stats = {}
 
         current_topic_index = 0
         start_overall_time = time.time()
 
         for src_topic_id, tgt_topic_id in topic_map.items():
-            if not active_mirrors.get(user_id, False):
+            current_state = active_mirrors.get(user_id, {})
+            if not current_state.get("running", False):
                 break
 
             current_topic_index += 1
             topic_title = topic_names.get(src_topic_id, f"Topic {src_topic_id}")
+            current_state["current_topic"] = topic_title
+            current_state["skip_topic"] = False
             topic_stats[src_topic_id] = {"copied": 0, "failed": 0, "skipped": 0, "title": topic_title}
 
             # Fetch messages for this topic using 3-layer thread resolution
@@ -978,17 +1074,29 @@ async def topic_mirror_cmd(client, message):
                 print(f"[TopicMirror] Topic '{topic_title}' already up to date ({already_done_count} msgs). Skipping.")
                 continue
 
+            # Calculate total payload bytes in this topic for accurate transfer speed & size display
+            topic_total_bytes = sum(get_msg_size(m) for m in messages_to_copy)
+            topic_copied_bytes = 0
+
             last_edit_time = time.time()
             topic_start_time = time.time()
 
             for idx, msg in enumerate(messages_to_copy, 1):
-                if not active_mirrors.get(user_id, False):
+                # Check cancellation or skip signal
+                current_state = active_mirrors.get(user_id, {})
+                if not current_state.get("running", False):
+                    break
+                if current_state.get("skip_topic", False):
+                    print(f"[TopicMirror] User requested skipping topic '{topic_title}' at msg {idx}/{total_msgs_in_topic}")
+                    current_state["skip_topic"] = False
                     break
 
                 # Skip service/action messages
                 if getattr(msg, "service", False) or getattr(msg, "empty", False):
                     await db.update_mirror_topic_checkpoint(src_chat_id, tgt_chat_id, src_topic_id, msg.id)
                     continue
+
+                msg_size = get_msg_size(msg)
 
                 success, method = await transfer_single_message(
                     userbot=userbot,
@@ -1003,6 +1111,8 @@ async def topic_mirror_cmd(client, message):
                 if success:
                     overall_copied += 1
                     topic_stats[src_topic_id]["copied"] += 1
+                    topic_copied_bytes += msg_size
+                    overall_transferred_bytes += msg_size
                 else:
                     if method != "skipped_filter":
                         overall_failed += 1
@@ -1016,15 +1126,25 @@ async def topic_mirror_cmd(client, message):
                 if now - last_edit_time > 3.5:
                     last_edit_time = now
                     topic_elapsed = now - topic_start_time
-                    speed_msgs = (idx / topic_elapsed) if topic_elapsed > 0 else 0
+                    
+                    # Calculate real data speed (MB/s / KB/s)
+                    speed_bytes_sec = (topic_copied_bytes / topic_elapsed) if topic_elapsed > 0 else 0
+                    speed_str = f"{humanbytes(speed_bytes_sec)}/s" if speed_bytes_sec > 0 else "Calculating..."
                     
                     percent = int((idx / total_msgs_in_topic) * 100) if total_msgs_in_topic > 0 else 0
                     bar_blocks = int(percent // 10)
-                    progress_bar_str = "❤️" * bar_blocks + "🤍" * (10 - bar_blocks)
+                    progress_bar_str = "▰" * bar_blocks + "▱" * (10 - bar_blocks)
                     
+                    # ETA calculation
                     remaining_msgs = total_msgs_in_topic - idx
-                    eta_seconds = (remaining_msgs / speed_msgs) if speed_msgs > 0 else 0
-                    eta_str = TimeFormatter(int(eta_seconds * 1000)) if eta_seconds > 0 else "Almost done"
+                    if speed_bytes_sec > 0 and topic_total_bytes > topic_copied_bytes:
+                        eta_seconds = (topic_total_bytes - topic_copied_bytes) / speed_bytes_sec
+                    else:
+                        speed_msgs = (idx / topic_elapsed) if topic_elapsed > 0 else 0
+                        eta_seconds = (remaining_msgs / speed_msgs) if speed_msgs > 0 else 0
+                    eta_str = TimeFormatter(int(eta_seconds * 1000)) if eta_seconds > 0 else "00:00:00"
+
+                    size_info = f"{humanbytes(topic_copied_bytes)} / {humanbytes(topic_total_bytes)}" if topic_total_bytes > 0 else f"{idx}/{total_msgs_in_topic} msgs"
 
                     status_text = (
                         f"╔══━⚡️ **Topic Mirroring in Progress** ⚡️━══╗\n"
@@ -1033,7 +1153,8 @@ async def topic_mirror_cmd(client, message):
                         f"> 📥 **Routing To:** `{tgt_title} → {topic_title}`\n\n"
                         f"> 📊 **Topic Progress:** {progress_bar_str} `{percent}%`\n"
                         f"> 🔢 **Pending Messages:** `{idx}/{total_msgs_in_topic}`\n"
-                        f"> 🚀 **Transfer Speed:** `{speed_msgs:.2f} msg/s`\n"
+                        f"> 💾 **Topic Data:** `{size_info}`\n"
+                        f"> ⚡ **Transfer Speed:** `{speed_str}`\n"
                         f"> ⏳ **Topic ETA:** `{eta_str}`\n\n"
                         f"> ✅ **New Copied:** `{overall_copied}` | ⏩ **Resumed/Skipped:** `{overall_skipped}`\n"
                         f"> ❌ **Failed:** `{overall_failed}` | 🛡️ **Bypass & Clean:** `Active`\n"
@@ -1041,7 +1162,7 @@ async def topic_mirror_cmd(client, message):
                         f"**__Pwrd by CHOSEN ONE ⚝__**"
                     )
                     try:
-                        await status_msg.edit(status_text, reply_markup=cancel_btn)
+                        await status_msg.edit(status_text, reply_markup=control_kb)
                     except Exception:
                         pass
 
@@ -1055,7 +1176,8 @@ async def topic_mirror_cmd(client, message):
             breakdown_lines.append(f"• **{stat['title']}**: ✅ `{stat['copied']}` | ⏩ `{stat['skipped']}` | ❌ `{stat['failed']}`")
 
         breakdown_text = "\n".join(breakdown_lines) if breakdown_lines else "No messages processed."
-        status_label = "🛑 **Mirror Cancelled by User**" if not active_mirrors.get(user_id, True) else "🎉 **Mirror Complete!**"
+        is_cancelled = not active_mirrors.get(user_id, {}).get("running", True)
+        status_label = "🛑 **Mirror Cancelled by User**" if is_cancelled else "🎉 **Mirror Complete!**"
         total_time_taken = TimeFormatter(int((time.time() - start_overall_time) * 1000))
 
         final_report = (
@@ -1067,6 +1189,7 @@ async def topic_mirror_cmd(client, message):
             f"• **Total New Copied:** ✅ `{overall_copied}`\n"
             f"• **Total Resumed/Skipped:** ⏩ `{overall_skipped}`\n"
             f"• **Total Failed:** ❌ `{overall_failed}`\n"
+            f"• **Total Data:** 💾 `{humanbytes(overall_transferred_bytes)}`\n"
             f"• **Total Time:** ⏱️ `{total_time_taken}`\n\n"
             f"📂 **Per-Topic Breakdown:**\n"
             f"{breakdown_text}\n\n"
