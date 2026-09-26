@@ -360,6 +360,9 @@ def format_caption_to_html(caption: str) -> str:
     # Strip any invalid surrogate characters before HTML conversion
     caption = clean_surrogates(str(caption))
 
+    # Clean leading arrow/bullet/formatting artifacts before blockquote markers
+    caption = re.sub(r'(?m)^[ \t\-_—>➤➢•*|~:]*>\s*', '> ', caption)
+
     # Process multiline and single-line blockquotes starting with >
     lines = caption.replace('\r\n', '\n').replace('\r', '\n').split('\n')
     new_lines = []

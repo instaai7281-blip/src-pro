@@ -227,28 +227,35 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     # 4. Replace any @mentions (@username, @channel) with ⚝
     text = re.sub(r'@\w+', '⚝', text)
 
-    # 5. Replace Extracted by / Downloaded by / Uploaded by with the Branding Tag
-    extraction_pattern = r'(?i)(?:Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*[^\n]*'
-    if re.search(extraction_pattern, text):
-        text = re.sub(extraction_pattern, f"> **{branding_tag}**", text)
-    else:
-        # Also clean generic powered by lines
-        text = re.sub(r'(?i)powered\s*by[\s_:➤>–\-]*[^\n]*', f"> **{branding_tag}**", text)
+    # 5. Remove known other bot tags & promotional signatures
+    other_tags = [
+        "➪ @PDF_X9 🦋 ❞", "@PDF_X9", "➪ @PDF_X9 🦋",
+        "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝", "⚝ 𝗝𝘂𝘀𝘁 𝗙ꪮ𝗿 𝗬ꪮ𝘂...💗",
+        "⛤ Just For You...💗", "Just For You...💗",
+    ]
+    for tag in other_tags:
+        text = text.replace(tag, '')
 
-    # 6. Remove other unwanted promoter phrases
+    # 6. Remove any extraction/download lines including leading arrows/bullets
+    extraction_pattern = r'(?im)^[ \t\-_—>➤➢•*|~:]*(?:Extracted|Downloaded|Download|Uploaded|Upload|Forwarded|Powered|Saved|Managed|Source|Credit|Credits)[\s_]*By[\s_:➤>–\-]*[^\n]*$'
+    text = re.sub(extraction_pattern, '', text)
+    text = re.sub(r'(?im)^[ \t\-_—>➤➢•*|~:]*(?:powered\s*by|bot:|via\s*⚝)[^\n]*$', '', text)
+
+    # 7. Remove other unwanted promoter phrases
     unwanted_phrases = [
         r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*',
         r'(?i)[*_]*team[\s_\-\.]*sp[ay]+[*_]*',
         r'(?i)[*_]*team[\s_\-\.]*spy[\s_\-\.]*pro[*_]*',
         r"(?i)[*_]*let'?s\s*help[*_]*",
         r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
-        r'(?i)via\s*⚝',
-        r'(?i)bot:\s*⚝',
     ]
     for phrase in unwanted_phrases:
         text = re.sub(phrase, '', text)
 
-    # 7. Apply user custom clean words & text replacements from database
+    # 8. Remove any trailing lines with arrows/bullets that only contain junk or leftover tags
+    text = re.sub(r'(?im)^[ \t\-_—>➤➢•*|~:]*(?:⚝|⛤|🖤|🦋|\s)*$', '', text)
+
+    # 9. Apply user custom clean words & text replacements from database
     clean_words = user_data.get("clean_words") or []
     for word in clean_words:
         if word:
@@ -259,7 +266,11 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     if to_replace and replace_txt:
         text = text.replace(to_replace, replace_txt)
 
-    # 8. Apply custom template caption if configured
+    # 10. Clean whitespace & multiple empty lines
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n{3,}', '\n\n', text).strip()
+
+    # 11. Apply custom template caption if configured
     custom_cap = user_data.get("caption")
     if custom_cap:
         text = f"{custom_cap}\n\n{text}".strip()
@@ -268,11 +279,10 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
         if branding_tag not in text:
             text = f"{text}\n\n> **{branding_tag}**".strip()
 
-    # 9. Normalize whitespace
-    text = re.sub(r'[ \t]+', ' ', text)
-    text = re.sub(r'\n{3,}', '\n\n', text)
+    # 12. Clean any stray leading arrows before blockquote markers
+    text = re.sub(r'(?m)^[ \t\-_—>➤➢•*|~:]*>\s*', '> ', text)
     
-    # 10. Apply bold styling to all caption lines while preserving blockquotes
+    # 13. Apply bold styling to all caption lines while preserving blockquotes
     text = make_caption_bold(text)
     return text.strip()
 
@@ -742,8 +752,6 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                 # If no original caption, generate clean blockquote caption with formatted filename & branding
                 if not orig_cap:
                     branding_tag = get_user_branding_tag(user_id) or "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
-                    if "⚝" not in branding_tag and "⛥" not in branding_tag:
-                        branding_tag = f"{branding_tag} ⚝"
                     final_caption = f"> **{clean_formatted_name}**\n\n> **{branding_tag}**"
                     final_caption = make_caption_bold(final_caption)
                     caption_html = format_caption_to_html(final_caption)
