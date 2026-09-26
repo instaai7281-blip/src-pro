@@ -152,41 +152,59 @@ def make_caption_bold(text: str) -> str:
     return '\n'.join(bolded_lines)
 
 
-def format_document_filename(raw_filename: str) -> str:
-    """Formats document/PDF filenames with 📙 icon at start and ⚝ before extension."""
+def format_media_filename(raw_filename: str, media_type: str = "document") -> str:
+    """Formats any media filename: removes all @mentions, stylizes brackets to 〘〙, cleans promo tags, and adds ⚝ before extension."""
     if not raw_filename:
-        raw_filename = "document.pdf"
+        raw_filename = "document.pdf" if media_type == "document" else "video.mp4"
     
-    # 1. Clean Chaudhary & promoter tags
-    clean = remove_chaudhary_fancy(raw_filename)
+    # 1. Clean surrogates & Chaudhary fancy text
+    clean = clean_surrogates(str(raw_filename))
+    clean = remove_chaudhary_fancy(clean)
+    
+    # 2. Remove ALL @usernames / @channels
     clean = re.sub(r'@\w+', '', clean)
-    clean = re.sub(r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*', '', clean)
-    clean = re.sub(r'(?i)[*_]*team[\s_\-\.]*sp[ay]+[*_]*', '', clean)
-    clean = re.sub(r'(?i)[*_]*let\'?s\s*help[*_]*', '', clean)
-    clean = re.sub(r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?', '', clean)
     
-    # 2. Replace all document/book/marker emojis with 📙
-    clean = re.sub(r'[📕📗📘📓📔📒📄📃📁📂📜📑🔴🔺🔹▪️▫️▶️]+', '📙', clean)
-    
-    # 3. Stylize brackets: () -> 〘〙, [] -> 〘〙, {} -> 〘〙
+    # 3. Clean promoter phrases
+    unwanted_phrases = [
+        r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*',
+        r'(?i)[*_]*team[\s_\-\.]*sp[ay]+[*_]*',
+        r'(?i)[*_]*team[\s_\-\.]*spy[\s_\-\.]*pro[*_]*',
+        r"(?i)[*_]*let\'?s\s*help[*_]*",
+        r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
+        r'(?i)devgagan',
+        r'(?i)chosen\s*one',
+        r'(?i)(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*',
+        r'(?i)powered\s*by[\s_:➤>–\-]*',
+        r'https?://\S+|t\.me/\S+',
+    ]
+    for phrase in unwanted_phrases:
+        clean = re.sub(phrase, '', clean)
+        
+    # 4. Stylize brackets: () -> 〘〙, [] -> 〘〙, {} -> 〘〙
     clean = re.sub(r'[({[]', '〘', clean)
     clean = re.sub(r'[)}\]]', '〙', clean)
     
-    # 4. Clean extra spaces/dashes
-    clean = re.sub(r'[ \t\-_]+', ' ', clean).strip()
-    
+    # 5. Extract extension
     base_name, ext = os.path.splitext(clean)
     if not ext:
-        ext = '.pdf'
+        ext = '.pdf' if media_type == 'document' else '.mp4'
         
-    # Strip any trailing star or punctuation from base name
-    base_name = re.sub(r'[\s⚝⛥\*]+$', '', base_name).strip()
+    # 6. If PDF / document, replace doc emojis with 📙 and ensure starts with 📙
+    if ext.lower() in ['.pdf', '.docs', '.doc', '.epub'] or media_type == 'document':
+        base_name = re.sub(r'[📕📗📘📓📔📒📄📃📁📂📜📑🔴🔺🔹▪️▫️▶️]+', '📙', base_name)
+        base_name = re.sub(r'[\s⚝⛥\*]+$', '', base_name).strip()
+        if not base_name.startswith('📙'):
+            base_name = f"📙 {base_name}".strip()
+    else:
+        base_name = re.sub(r'[\s⚝⛥\*]+$', '', base_name).strip()
+
+    # 7. Clean extra spaces/dashes
+    base_name = re.sub(r'[ \t\-_]+', ' ', base_name).strip()
     
-    # Ensure starts with 📙
-    if not base_name.startswith('📙'):
-        base_name = f"📙 {base_name}".strip()
-        
     return f"{base_name} ⚝{ext}".strip()
+
+
+format_document_filename = format_media_filename
 
 
 async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
@@ -685,6 +703,19 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
             sent_media = None
             # Video metadata & thumbnail handling
             if msg.video or file_extension in VIDEO_EXTENSIONS:
+                # Format and rename video file to remove @mentions and add ⚝ before extension
+                raw_filename = (msg.video.file_name if msg.video and msg.video.file_name else os.path.basename(temp_file)) or "video.mp4"
+                clean_formatted_name = format_media_filename(raw_filename, media_type="video")
+                renamed_path = os.path.join(os.path.dirname(temp_file), clean_formatted_name)
+                if renamed_path != temp_file:
+                    try:
+                        if os.path.exists(renamed_path):
+                            os.remove(renamed_path)
+                        os.rename(temp_file, renamed_path)
+                        temp_file = renamed_path
+                    except Exception as ren_err:
+                        print(f"[TopicMirror] Video rename notice: {ren_err}")
+
                 # Extract original dimensions and duration from msg.video if available
                 duration = msg.video.duration if (msg.video and msg.video.duration) else 0
                 width = msg.video.width if (msg.video and msg.video.width) else 0
@@ -736,7 +767,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
 
                 # Format and rename document file with 📙 prefix and ⚝ before extension
                 raw_filename = (msg.document.file_name if msg.document and msg.document.file_name else os.path.basename(temp_file)) or "document.pdf"
-                clean_formatted_name = format_document_filename(raw_filename)
+                clean_formatted_name = format_media_filename(raw_filename, media_type="document")
                 
                 # Rename the downloaded temp file on disk so Pyrogram uploads with the clean name
                 renamed_path = os.path.join(os.path.dirname(temp_file), clean_formatted_name)
@@ -778,6 +809,21 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     has_spoiler=has_spoiler
                 )
             elif msg.audio:
+                raw_filename = (msg.audio.file_name if msg.audio and msg.audio.file_name else os.path.basename(temp_file)) or "audio.mp3"
+                clean_formatted_name = format_media_filename(raw_filename, media_type="audio")
+                renamed_path = os.path.join(os.path.dirname(temp_file), clean_formatted_name)
+                if renamed_path != temp_file:
+                    try:
+                        if os.path.exists(renamed_path):
+                            os.remove(renamed_path)
+                        os.rename(temp_file, renamed_path)
+                        temp_file = renamed_path
+                    except Exception as ren_err:
+                        print(f"[TopicMirror] Audio rename notice: {ren_err}")
+
+                clean_performer = re.sub(r'@\w+', '', msg.audio.performer or '').strip() if msg.audio.performer else None
+                clean_title = re.sub(r'@\w+', '', msg.audio.title or '').strip() if msg.audio.title else None
+
                 if thumb_path and os.path.isfile(thumb_path):
                     thumb_path = optimize_thumbnail(thumb_path)
                 sent_media = await app.send_audio(
@@ -785,8 +831,8 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     audio=temp_file,
                     caption=caption_html,
                     duration=msg.audio.duration or 0,
-                    performer=msg.audio.performer,
-                    title=msg.audio.title,
+                    performer=clean_performer,
+                    title=clean_title,
                     thumb=thumb_path,
                     reply_to_message_id=tgt_topic_id,
                     parse_mode=ParseMode.HTML

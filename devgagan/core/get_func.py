@@ -163,38 +163,56 @@ def clean_text_advanced(text, user_tag, delete_words=None, replacements=None):
 
 
 def clean_filename(text, user_tag=""):
-    """Clean filename, optionally replacing @mentions with a tag.
-    Returns a safe filename string.
-    """
+    """Clean filename: removes all @usernames, promo tags, stylizes brackets to 〘〙, and ensures ⚝ before extension."""
     if not text:
-        return "file"
+        return "file ⚝"
     
-    # Clean Chaudhary fancy text first
+    # Strip surrogates & Chaudhary fancy text first
+    text = clean_surrogates(str(text))
     text = remove_chaudhary_fancy(text)
     
-    # Apply advanced cleaning without delete/replacements (just branding removal)
-    text = clean_text_advanced(text, user_tag)
+    # Remove ALL @usernames / @channels
+    text = re.sub(r'@\w+', '', text)
     
-    # Normalize Unicode
-    text = unicodedata.normalize("NFKC", text)
+    # Remove promo phrases
+    unwanted_phrases = [
+        r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*',
+        r'(?i)[*_]*team[\s_\-\.]*sp[ay]+[*_]*',
+        r'(?i)[*_]*team[\s_\-\.]*spy[\s_\-\.]*pro[*_]*',
+        r"(?i)[*_]*let\'?s\s*help[*_]*",
+        r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?',
+        r'(?i)devgagan',
+        r'(?i)chosen\s*one',
+        r'(?i)(Extracted|Downloaded|Download|Uploaded|Upload|Forwarded)[\s_]*By[\s_:➤>–\-]*',
+        r'(?i)powered\s*by[\s_:➤>–\-]*',
+        r'https?://\S+|t\.me/\S+',
+    ]
+    for phrase in unwanted_phrases:
+        text = re.sub(phrase, '', text)
+        
+    # Stylize brackets
+    text = re.sub(r'[({[]', '〘', text)
+    text = re.sub(r'[)}\]]', '〙', text)
     
-    # Remove emojis and symbols, keep basic punctuation for filenames
-    text = ''.join(
-        char for char in text
-        if not unicodedata.category(char).startswith('S')
-        and not unicodedata.category(char).startswith('C')
-        and not unicodedata.category(char).startswith('P')
-        or char in ['.', '-', '_', '〘', '〙', '⛥', '⚝']
-    )
+    # Separate base and ext
+    base_name, ext = os.path.splitext(text)
     
-    # Normalize spaces, dashes, underscores
-    text = re.sub(r'[_\s\-]+', ' ', text)
+    # If PDF / document, replace doc emojis with 📙 and ensure starts with 📙
+    if ext and ext.lower() in ['.pdf', '.docs', '.doc', '.epub']:
+        base_name = re.sub(r'[📕📗📘📓📔📒📄📃📁📂📜📑🔴🔺🔹▪️▫️▶️]+', '📙', base_name)
+        base_name = re.sub(r'[\s⚝⛥\*]+$', '', base_name).strip()
+        if not base_name.startswith('📙'):
+            base_name = f"📙 {base_name}".strip()
+    else:
+        base_name = re.sub(r'[\s⚝⛥\*]+$', '', base_name).strip()
+        
+    # Clean extra dashes, underscores, spaces
+    base_name = re.sub(r'[ \t\-_]+', ' ', base_name).strip()
     
-    # Preserve PDF marker
-    if text.lower().endswith('.pdf'):
-        text = re.sub(r'(?i)\.pdf$', ' ⛥.pdf', text)
-    
-    return text.strip()
+    if ext:
+        return f"{base_name} ⚝{ext}".strip()
+    else:
+        return f"{base_name} ⚝".strip()
 
 
 def strip_links_except_youtube(text: str) -> str:
@@ -2371,15 +2389,12 @@ def strip_unicode_junk(text: str) -> str:
 async def rename_file(file, sender, caption=None):
     delete_words = load_delete_words(sender)
     replacements = load_replacement_words(sender)
-    custom_rename_tag = get_user_rename_preference(sender)
+    custom_rename_tag = get_user_rename_preference(sender) or "⚝"
 
     # Separate directory and filename
     directory = os.path.dirname(file)
     filename = os.path.basename(file)
     base_name, ext = os.path.splitext(filename)
-    
-    if ext and ext.lower() == '.pdf':
-        custom_rename_tag = '⚝'
     
     ext = ext if ext and len(ext) <= 6 else ".mp4"
     original_base = base_name
@@ -2402,20 +2417,34 @@ async def rename_file(file, sender, caption=None):
     # Clean Chaudhary fancy text first
     base_name = remove_chaudhary_fancy(base_name)
 
-    # Apply text transformations
-    # Fully remove all other mentions so that only custom tag is present at the end
+    # Fully remove all mentions & promo tags
     base_name = re.sub(r'@\w+', '', base_name)
     base_name = re.sub(r'(?i)[*_]*team[\s_\-\.]*jnc[*_]*', '', base_name)  # Remove team jnc
-    base_name = re.sub(r'(?i)[*_]*team[\s_\-\.]*spay[*_]*', '', base_name) # Remove team spay
+    base_name = re.sub(r'(?i)[*_]*team[\s_\-\.]*sp[ay]+[*_]*', '', base_name) # Remove team spay
+    base_name = re.sub(r'(?i)[*_]*team[\s_\-\.]*spy[\s_\-\.]*pro[*_]*', '', base_name)
     base_name = re.sub(r'(?i)[*_]*let\'?s\s*help[*_]*', '', base_name)  # Remove let's help
     base_name = re.sub(r'✧\s*𝚃𝙷𝙴\s*𝚂𝚃𝚄𝙳𝚈\s*𝚅𝙰𝚄𝙻𝚃\s*✧\s*🏝️?', '', base_name)  # Remove study vault
+    base_name = re.sub(r'https?://\S+|t\.me/\S+', '', base_name)
     for word in delete_words:
         base_name = base_name.replace(word, "")  # Remove banned words
     for word, replace_word in replacements.items():
         base_name = base_name.replace(word, replace_word)  # Apply word replacements
 
-    # Clean Unicode while preserving spaces and basic punctuation
-    base_name = strip_unicode_junk(base_name)
+    # Stylize brackets
+    base_name = re.sub(r'[({[]', '〘', base_name)
+    base_name = re.sub(r'[)}\]]', '〙', base_name)
+
+    # Clean document emojis and formatting
+    if ext.lower() in ['.pdf', '.docs', '.doc', '.epub']:
+        base_name = re.sub(r'[📕📗📘📓📔📒📄📃📁📂📜📑🔴🔺🔹▪️▫️▶️]+', '📙', base_name)
+        base_name = re.sub(r'[\s⚝⛥\*]+$', '', base_name).strip()
+        if not base_name.startswith('📙'):
+            base_name = f"📙 {base_name}".strip()
+    else:
+        base_name = re.sub(r'[\s⚝⛥\*]+$', '', base_name).strip()
+
+    # Clean spaces/dashes
+    base_name = re.sub(r'[ \t\-_]+', ' ', base_name).strip()
 
     # Final filename assembly
     new_filename = f"{base_name.strip()} {custom_rename_tag}{ext}".strip()
@@ -2423,7 +2452,13 @@ async def rename_file(file, sender, caption=None):
     
     # Ensure filename isn't empty after processing
     if not os.path.splitext(new_filename)[0]:
-        new_filename = f"document_{int(time.time())}{ext}"
+        new_filename = f"document_{int(time.time())} ⚝{ext}"
+
+    new_file_path = os.path.join(directory, new_filename)
+
+    # Perform the rename
+    await asyncio.to_thread(os.rename, file, new_file_path)
+    return new_file_path
 
     new_file_path = os.path.join(directory, new_filename)
 
