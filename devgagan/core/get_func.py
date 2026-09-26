@@ -375,9 +375,6 @@ def format_caption_to_html(caption: str) -> str:
             in_quote = True
             content = stripped.lstrip(">").strip()
             quote_buf.append(content)
-        elif in_quote and not stripped:
-            # Preserve empty lines inside a blockquote
-            quote_buf.append("")
         else:
             if in_quote:
                 joined_quote = '\n'.join(quote_buf).strip()
