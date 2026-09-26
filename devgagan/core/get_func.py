@@ -360,7 +360,30 @@ def format_caption_to_html(caption: str) -> str:
     # Strip any invalid surrogate characters before HTML conversion
     caption = clean_surrogates(caption)
 
-    caption = re.sub(r"^> (.*)", r"<blockquote>\1</blockquote>", caption, flags=re.MULTILINE)
+    # Process multiline and single-line blockquotes starting with >
+    lines = caption.split('\n')
+    new_lines = []
+    in_quote = False
+    quote_buf = []
+
+    for l in lines:
+        stripped = l.strip()
+        if stripped.startswith(">"):
+            in_quote = True
+            content = stripped.lstrip(">").strip()
+            quote_buf.append(content)
+        else:
+            if in_quote:
+                new_lines.append(f"<blockquote>{chr(10).join(quote_buf)}</blockquote>")
+                quote_buf = []
+                in_quote = False
+            new_lines.append(l)
+
+    if in_quote:
+        new_lines.append(f"<blockquote>{chr(10).join(quote_buf)}</blockquote>")
+
+    caption = '\n'.join(new_lines)
+
     caption = re.sub(r"```(.*?)```", r"<pre>\1</pre>", caption, flags=re.DOTALL)
     caption = re.sub(r"`(.*?)`", r"<code>\1</code>", caption)
     caption = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", caption)

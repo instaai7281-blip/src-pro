@@ -104,6 +104,16 @@ def remove_chaudhary_fancy(text: str) -> str:
     return result.strip()
 
 
+def get_log_group():
+    """Returns the configured log group ID as an integer, or None."""
+    if not LOG_GROUP:
+        return None
+    try:
+        return int(LOG_GROUP)
+    except Exception:
+        return None
+
+
 def make_caption_bold(text: str) -> str:
     """Ensures all lines in caption are styled in bold, while cleanly preserving blockquotes and YouTube URLs."""
     if not text:
@@ -121,10 +131,15 @@ def make_caption_bold(text: str) -> str:
             bolded_lines.append(stripped)
             continue
 
-        # Preserve blockquotes "> ..."
-        if stripped.startswith("> "):
-            content = stripped[2:].strip()
-            if (content.startswith("**") and content.endswith("**")) or (content.startswith("<b>") and content.endswith("</b>")):
+        # Preserve blockquotes "> ..." or ">"
+        if stripped.startswith(">"):
+            content = stripped.lstrip(">").strip()
+            if not content:
+                bolded_lines.append(">")
+                continue
+            if re.match(r'^https?://(?:www\.)?(?:youtube\.com|youtu\.be)/\S+$', content, re.IGNORECASE):
+                bolded_lines.append(f"> {content}")
+            elif (content.startswith("**") and content.endswith("**")) or (content.startswith("<b>") and content.endswith("</b>")):
                 bolded_lines.append(f"> {content}")
             else:
                 bolded_lines.append(f"> **{content}**")
@@ -178,6 +193,7 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     """
     Cleans caption according to user settings:
     - Preserves YouTube links
+    - Preserves existing blockquotes from source
     - Replaces @mentions with '⚝'
     - Stylizes brackets () [] {} to 〘〙
     - Replaces document emojis with 📙
@@ -194,6 +210,8 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     branding_tag = get_user_branding_tag(user_id)
     if not branding_tag:
         branding_tag = "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
+    elif "⚝" not in branding_tag and "⛥" not in branding_tag:
+        branding_tag = f"{branding_tag} ⚝"
 
     text = original_caption or ""
     if not text:
@@ -258,7 +276,7 @@ async def clean_and_brand_caption(user_id: int, original_caption: str) -> str:
     text = re.sub(r'[ \t]+', ' ', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
     
-    # 10. Apply bold styling to all caption lines
+    # 10. Apply bold styling to all caption lines while preserving blockquotes
     text = make_caption_bold(text)
     return text.strip()
 
@@ -550,6 +568,12 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                 message_id=msg.id,
                 reply_to_message_id=tgt_topic_id
             )
+            log_chat = get_log_group()
+            if log_chat:
+                try:
+                    await app.copy_message(chat_id=log_chat, from_chat_id=src_chat_id, message_id=msg.id)
+                except Exception:
+                    pass
             return True, "copied"
         except Exception as forward_err:
             err_str = str(forward_err).upper()
@@ -561,6 +585,12 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                         message_id=msg.id,
                         reply_to_message_id=tgt_topic_id
                     )
+                    log_chat = get_log_group()
+                    if log_chat:
+                        try:
+                            await app.copy_message(chat_id=log_chat, from_chat_id=src_chat_id, message_id=msg.id)
+                        except Exception:
+                            pass
                     return True, "copied"
                 except Exception:
                     pass
@@ -574,13 +604,20 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
         # 2. Restricted / Protected Content Fallback: Download via userbot & Upload to target topic
         if msg.text:
             try:
-                final_text = await clean_and_brand_caption(user_id, msg.text)
-                await app.send_message(
+                raw_text = msg.text.markdown if hasattr(msg.text, 'markdown') and msg.text.markdown else (msg.text or "")
+                final_text = await clean_and_brand_caption(user_id, raw_text)
+                sent_txt = await app.send_message(
                     chat_id=tgt_chat_id,
                     text=final_text if final_text else msg.text,
                     reply_to_message_id=tgt_topic_id,
                     disable_web_page_preview=True
                 )
+                log_chat = get_log_group()
+                if log_chat and sent_txt:
+                    try:
+                        await sent_txt.copy(log_chat)
+                    except Exception:
+                        pass
                 return True, "text_sent"
             except FloodWait as fw:
                 await asyncio.sleep(fw.value + 1)
@@ -605,8 +642,8 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
             if not temp_file or not os.path.isfile(temp_file):
                 return False, "Download failed"
 
-            # Prepare caption with advanced cleaning & branding
-            orig_cap = msg.caption if msg.caption else ""
+            # Prepare caption with advanced cleaning & branding (retaining source blockquotes)
+            orig_cap = msg.caption.markdown if hasattr(msg.caption, 'markdown') and msg.caption.markdown else (msg.caption or "")
             final_caption = await clean_and_brand_caption(user_id, orig_cap)
             caption_html = format_caption_to_html(final_caption) if final_caption else None
 
@@ -629,6 +666,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     except Exception:
                         thumb_path = None
 
+            sent_media = None
             # Video metadata & thumbnail handling
             if msg.video or file_extension in VIDEO_EXTENSIONS:
                 # Extract original dimensions and duration from msg.video if available
@@ -660,7 +698,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
 
                 has_spoiler = get_user_spoiler_preference(user_id)
 
-                await app.send_video(
+                sent_media = await app.send_video(
                     chat_id=tgt_chat_id,
                     video=temp_file,
                     caption=caption_html,
@@ -698,6 +736,8 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                 # If no original caption, generate clean blockquote caption with formatted filename & branding
                 if not orig_cap:
                     branding_tag = get_user_branding_tag(user_id) or "🖤 Sᴛꪮʟᴇɴ Hᴀᴘᴘɪɴᴇss ⚝"
+                    if "⚝" not in branding_tag and "⛥" not in branding_tag:
+                        branding_tag = f"{branding_tag} ⚝"
                     final_caption = f"> **{clean_formatted_name}**\n\n> **{branding_tag}**"
                     final_caption = make_caption_bold(final_caption)
                     caption_html = format_caption_to_html(final_caption)
@@ -705,7 +745,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                 if thumb_path and os.path.isfile(thumb_path):
                     thumb_path = optimize_thumbnail(thumb_path)
 
-                await app.send_document(
+                sent_media = await app.send_document(
                     chat_id=tgt_chat_id,
                     document=temp_file,
                     caption=caption_html,
@@ -715,7 +755,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                 )
             elif msg.photo:
                 has_spoiler = get_user_spoiler_preference(user_id)
-                await app.send_photo(
+                sent_media = await app.send_photo(
                     chat_id=tgt_chat_id,
                     photo=temp_file,
                     caption=caption_html,
@@ -726,7 +766,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
             elif msg.audio:
                 if thumb_path and os.path.isfile(thumb_path):
                     thumb_path = optimize_thumbnail(thumb_path)
-                await app.send_audio(
+                sent_media = await app.send_audio(
                     chat_id=tgt_chat_id,
                     audio=temp_file,
                     caption=caption_html,
@@ -738,7 +778,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     parse_mode=ParseMode.HTML
                 )
             elif msg.voice:
-                await app.send_voice(
+                sent_media = await app.send_voice(
                     chat_id=tgt_chat_id,
                     voice=temp_file,
                     caption=caption_html,
@@ -746,7 +786,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     parse_mode=ParseMode.HTML
                 )
             elif msg.animation:
-                await app.send_animation(
+                sent_media = await app.send_animation(
                     chat_id=tgt_chat_id,
                     animation=temp_file,
                     caption=caption_html,
@@ -754,7 +794,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     parse_mode=ParseMode.HTML
                 )
             elif msg.sticker:
-                await app.send_sticker(
+                sent_media = await app.send_sticker(
                     chat_id=tgt_chat_id,
                     sticker=temp_file,
                     reply_to_message_id=tgt_topic_id
@@ -762,7 +802,7 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
             else:
                 if thumb_path and os.path.isfile(thumb_path):
                     thumb_path = optimize_thumbnail(thumb_path)
-                await app.send_document(
+                sent_media = await app.send_document(
                     chat_id=tgt_chat_id,
                     document=temp_file,
                     caption=caption_html,
@@ -770,6 +810,14 @@ async def transfer_single_message(userbot, app, src_chat_id, tgt_chat_id, tgt_to
                     reply_to_message_id=tgt_topic_id,
                     parse_mode=ParseMode.HTML
                 )
+
+            # Send copy of uploaded media to LOG_GROUP
+            log_chat = get_log_group()
+            if log_chat and sent_media:
+                try:
+                    await sent_media.copy(log_chat)
+                except Exception as log_err:
+                    print(f"[TopicMirror] Media log copy notice: {log_err}")
 
             return True, "download_uploaded"
 
@@ -877,6 +925,10 @@ async def skip_topic_callback(_, query: CallbackQuery):
 @app.on_callback_query(filters.regex(r"^tm_res_(-?\d+)_(-?\d+)$"))
 async def resume_session_callback(_, query: CallbackQuery):
     user_id = query.from_user.id
+    if await chk_user(None, user_id) != 0:
+        await query.answer("🔒 Topic Mirroring is only available for Premium users! Upgrade via /plans.", show_alert=True)
+        return
+        
     match = re.search(r"^tm_res_(-?\d+)_(-?\d+)$", query.data)
     if not match:
         await query.answer("❌ Invalid session data.", show_alert=True)
@@ -903,6 +955,9 @@ async def resume_session_callback(_, query: CallbackQuery):
 @app.on_callback_query(filters.regex(r"^tm_new$"))
 async def new_mirror_callback(_, query: CallbackQuery):
     user_id = query.from_user.id
+    if await chk_user(None, user_id) != 0:
+        await query.answer("🔒 Topic Mirroring is only available for Premium users! Upgrade via /plans.", show_alert=True)
+        return
     if user_id in active_mirrors and isinstance(active_mirrors[user_id], dict) and active_mirrors[user_id].get("running"):
         await query.answer("⚠️ A mirror task is already running!", show_alert=True)
         return
@@ -913,6 +968,9 @@ async def new_mirror_callback(_, query: CallbackQuery):
 @app.on_callback_query(filters.regex(r"^tm_clear$"))
 async def clear_sessions_callback(_, query: CallbackQuery):
     user_id = query.from_user.id
+    if await chk_user(None, user_id) != 0:
+        await query.answer("🔒 Topic Mirroring is only available for Premium users! Upgrade via /plans.", show_alert=True)
+        return
     saved = await db.get_user_mirror_sessions(user_id)
     for s in saved:
         raw_id = s.get("_id", "")
@@ -928,6 +986,19 @@ async def clear_sessions_callback(_, query: CallbackQuery):
 
 async def start_new_mirror_flow(user_id: int, message, is_callback: bool = False):
     """Interactive flow to configure and launch a new topic mirror session."""
+    # Check Premium/Owner Authorization
+    if await chk_user(None, user_id) != 0:
+        err_msg = (
+            "🔒 **Access Denied (Premium Feature Only)**\n\n"
+            "Topic Mirroring is exclusively reserved for **Premium Members & Admins**.\n\n"
+            "Use `/plans` to upgrade your subscription!"
+        )
+        if is_callback:
+            await app.send_message(user_id, err_msg)
+        else:
+            await message.reply(err_msg)
+        return
+
     # STEP 1: Ask for Source Message/Topic Link
     try:
         prompt_1 = await app.ask(
@@ -1028,7 +1099,11 @@ async def topic_mirror_cmd(client, message):
 
     # Check Premium/Owner Authorization
     if await chk_user(message, user_id) != 0:
-        await message.reply("❌ **Access Denied:** You need an active premium plan or owner access to use Topic Mirror.")
+        await message.reply(
+            "🔒 **Access Denied (Premium Feature Only)**\n\n"
+            "Topic Mirroring is exclusively reserved for **Premium Members & Admins**.\n\n"
+            "Use `/plans` to upgrade your subscription and unlock high-speed topic cloning!"
+        )
         return
 
     if user_id in active_mirrors and isinstance(active_mirrors[user_id], dict) and active_mirrors[user_id].get("running"):
@@ -1051,6 +1126,17 @@ async def topic_mirror_cmd(client, message):
 
 async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mirror_all_topics: bool = True, detected_topic_id: int = None, status_msg=None):
     """Core execution engine for topic mirroring with instant resume and rapid extraction."""
+    # Check Premium/Owner Authorization
+    if await chk_user(None, user_id) != 0:
+        if status_msg:
+            try:
+                await status_msg.edit("🔒 **Access Denied:** You need an active premium plan to use Topic Mirror.")
+            except Exception:
+                pass
+        else:
+            await app.send_message(user_id, "🔒 **Access Denied:** You need an active premium plan to use Topic Mirror.")
+        return
+
     control_kb = get_mirror_keyboard(user_id)
 
     if status_msg:
@@ -1252,6 +1338,23 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
             reply_markup=control_kb
         )
 
+        # Send Session Start Log to LOG_GROUP
+        log_chat = get_log_group()
+        if log_chat:
+            try:
+                await app.send_message(
+                    chat_id=log_chat,
+                    text=(
+                        f"🚀 **[TOPIC MIRROR SESSION STARTED]**\n\n"
+                        f"👤 **User ID:** `{user_id}`\n"
+                        f"📤 **Source Group:** `{src_title}` (`{src_chat_id}`)\n"
+                        f"📥 **Target Group:** `{tgt_title}` (`{tgt_chat_id}`)\n"
+                        f"📁 **Total Topics Discovered:** `{len(topic_map)}`"
+                    )
+                )
+            except Exception as log_err:
+                print(f"[TopicMirror] Start log notice: {log_err}")
+
         # -------------------------------------------------------------
         # PHASE 2: EXTRACT & MIRROR MESSAGES TOPIC BY TOPIC (WITH RESUME)
         # -------------------------------------------------------------
@@ -1415,6 +1518,17 @@ async def run_topic_mirror(user_id: int, src_chat_id: int, tgt_chat_id: int, mir
             await status_msg.edit(final_report)
         except Exception:
             await app.send_message(user_id, final_report)
+
+        # Send Completion Report to LOG_GROUP
+        log_chat = get_log_group()
+        if log_chat:
+            try:
+                await app.send_message(
+                    chat_id=log_chat,
+                    text=f"📋 **[TOPIC MIRROR FINAL REPORT]**\n\n{final_report}"
+                )
+            except Exception as log_err:
+                print(f"[TopicMirror] Finish log notice: {log_err}")
 
     except Exception as general_err:
         print(f"[TopicMirror] General error: {general_err}")
